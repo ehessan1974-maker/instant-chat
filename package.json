@@ -1,0 +1,12 @@
+{
+  "name": "instant-chat",
+  "version": "1.0.0",
+  "description": "تطبيق المحادثة الفورية",
+  "scripts": {
+    "start": "node chat-server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "socket.io": "^4.8.1"
+  }
+}
