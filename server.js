@@ -5,6 +5,7 @@ var app = express();
 var server = http.createServer(app);
 var wss = new WebSocket.Server({ server: server });
 var users = {};
+var sockets = {};
 var messages = [];
 var userIdCounter = 1;
 app.get('/', function(req, res) {
@@ -16,13 +17,13 @@ function getRandomColor() {
 }
 function getUserList() {
   var list = [];
-  for (var id in users) { list.push(users[id]); }
+  for (var id in users) { list.push({id: users[id].id, name: users[id].name, color: users[id].color, avatar: users[id].avatar}); }
   return list;
 }
 function sendToAll(data) {
   var msg = JSON.stringify(data);
-  for (var id in users) {
-    if (users[id].ws.readyState === 1) users[id].ws.send(msg);
+  for (var id in sockets) {
+    if (sockets[id].readyState === 1) sockets[id].send(msg);
   }
 }
 function sendTo(ws, data) {
@@ -37,15 +38,16 @@ function getTime() {
 }
 wss.on('connection', function(ws) {
   var myId = '' + userIdCounter++;
+  sockets[myId] = ws;
   ws.on('message', function(raw) {
     var data;
     try { data = JSON.parse(raw); } catch(e) { return; }
     if (data.type === 'login') {
       var name = data.name || 'User';
-      users[myId] = { id: myId, name: name, color: getRandomColor(), avatar: name.charAt(0).toUpperCase(), ws: ws };
+      users[myId] = { id: myId, name: name, color: getRandomColor(), avatar: name.charAt(0).toUpperCase() };
       sendTo(ws, { type: 'previous_messages', messages: messages.slice(-100) });
-      sendTo(ws, { type: 'your_info', user: users[myId] });
-      sendToAll({ type: 'user_joined', user: users[myId], onlineUsers: getUserList() });
+      sendTo(ws, { type: 'your_info', user: { id: users[myId].id, name: users[myId].name, color: users[myId].color, avatar: users[myId].avatar } });
+      sendToAll({ type: 'user_joined', user: { id: users[myId].id, name: users[myId].name, color: users[myId].color, avatar: users[myId].avatar }, onlineUsers: getUserList() });
     }
     else if (data.type === 'send_message') {
       var user = users[myId];
@@ -69,6 +71,7 @@ wss.on('connection', function(ws) {
       delete users[myId];
       sendToAll({ type: 'user_left', userId: myId, username: user.name, onlineUsers: getUserList() });
     }
+    delete sockets[myId];
   });
   ws.on('error', function() {});
 });
