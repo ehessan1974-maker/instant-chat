@@ -189,6 +189,9 @@
 
     function login(){
       initAudio();
+      if('Notification' in window && Notification.permission==='default'){
+        Notification.requestPermission();
+      }
       var name=document.getElementById('usernameInput').value.trim();
       var srv='instant-chat-xbmk.onrender.com';
       var errEl=document.getElementById('loginError');
