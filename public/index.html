@@ -124,6 +124,7 @@
   </div>
   <script>
     var ws=null,currentUser=null,myUserId='',onlineUsers=[],typingTimeout=null,isAtBottom=true,serverAddr='',reconnectTimer=null,waitInterval=null,loginStartTime=0,appVisible=true,audioCtx=null,isMobile=false;
+var vapidKey='BDFDyyfTxKnrsh-ndwLFkXXRiCzfZ8YJVAAjoILQZVdxXRRHZjXG8enyPpU5Zjm2KDFVpdrH_cc_mYgNpQNKDkA';
     (function(){var u=navigator.userAgent||'';if(u.match(/Android|iPhone|iPad|iPod|BlackBerry|Opera Mini|IEMobile/i))isMobile=true;})();
 
     function initAudio(){
@@ -187,24 +188,49 @@
     document.getElementById('messageInput').addEventListener('keydown',function(e){if(e.keyCode===13){e.preventDefault();sendMessage();}handleTyping();});
     document.getElementById('usernameInput').focus();
 
-    function login(){
-      initAudio();
-      if('Notification' in window && Notification.permission==='default'){
-        Notification.requestPermission();
-      }
-      var name=document.getElementById('usernameInput').value.trim();
-      var srv='instant-chat-xbmk.onrender.com';
-      var errEl=document.getElementById('loginError');
-      if(!name){errEl.textContent='أدخل اسمك';errEl.style.display='block';return;}
-      errEl.style.display='none';
-      serverAddr=srv;
-      try{localStorage.setItem('chat_user',name);}catch(e){}
-      try{localStorage.setItem('chat_server',srv);}catch(e){}
-      currentUser={name:name,color:'#6366f1',avatar:name.charAt(0).toUpperCase()};
-      document.getElementById('loginBtn').disabled=true;
-      document.getElementById('loginBtn').textContent='جاري الاتصال...';
-      connectWS(srv,name);
-    }
+function login(){
+  initAudio();
+  if('Notification' in window && Notification.permission==='default'){Notification.requestPermission().then(function(p){if(p!=='granted') alert('لم يتم السماح بالإشعارات');});}
+  var name=document.getElementById('usernameInput').value.trim();
+  var srv=window.location.host;
+  var errEl=document.getElementById('loginError');
+  if(!name){errEl.textContent='أدخل اسمك';errEl.style.display='block';return;}
+  errEl.style.display='none';
+  serverAddr=srv;
+  try{localStorage.setItem('chat_user',name);}catch(e){}
+  currentUser={name:name,color:'#6366f1',avatar:name.charAt(0).toUpperCase()};
+  document.getElementById('loginBtn').disabled=true;
+  document.getElementById('loginBtn').textContent='جاري الاتصال...';
+  connectWS(srv,name);
+}
+
+function registerPush(){
+  if(!('serviceWorker' in navigator)){alert('المتصفح لا يدعم Service Worker');return;}
+  if(!('PushManager' in window)){alert('المتصفح لا يدعم الإشعارات');return;}
+  if('Notification' in window && Notification.permission==='default'){
+  Notification.requestPermission().then(function(p){
+    if(p!=='granted') alert('لم يتم السماح بالإشعارات');
+  });
+}
+
+  navigator.serviceWorker.register('/sw.js').then(function(reg){
+    alert('Service Worker مسجل بنجاح');
+    reg.pushManager.subscribe({
+      userVisibleOnly:true,
+      applicationServerKey:urlBase64ToUint8Array(vapidKey)
+    }).then(function(subscription){
+      alert('تم الاشتراك بالإشعارات');
+      fetch('/subscribe',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({userId:myUserId,endpoint:subscription.endpoint,keys:subscription.keys})
+      }).then(function(r){
+        if(r.ok)alert('تم إرسال الاشتراك للسيرفر');
+        else alert('فشل إرسال الاشتراك: '+r.status);
+      }).catch(function(e){alert('خطأ في إرسال الاشتراك: '+e.message);});
+    }).catch(function(e){alert('فشل الاشتراك بالإشعارات: '+e.message);});
+  }).catch(function(e){alert('فشل تسجيل Service Worker: '+e.message);});
+}
 
     function connectWS(srv,name){
       if(ws){try{ws.close();}catch(e){}}
