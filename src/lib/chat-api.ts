@@ -1,0 +1,234 @@
+// عميل REST لتطبيق "محادثة فورية" — يقرأ التوكن من localStorage('ic_token')
+// ويضيف الترويسة Authorization: Bearer <token> لكل طلب محمي.
+
+export interface Me {
+  id: string;
+  phone: string;
+  name: string;
+  avatarColor: string;
+  about?: string | null;
+}
+
+export interface UserSummary {
+  id: string;
+  name: string;
+  avatarColor: string;
+  about?: string | null;
+  lastSeen?: string | null;
+  phone?: string | null;
+}
+
+export interface LastMessage {
+  id: string;
+  text: string;
+  createdAt: string;
+  senderId: string;
+  senderName?: string | null;
+  type?: string;
+}
+
+export interface ConversationOther {
+  id: string;
+  name: string;
+  avatarColor: string;
+  lastSeen?: string | null;
+  /** دفاعي: قد يضيفه الوكيل 2-a لاحقاً — إن غاب نعرض "sent" افتراضياً */
+  lastReadAt?: string | null;
+}
+
+export interface Conversation {
+  id: string;
+  type: 'private' | 'group' | string;
+  name?: string | null;
+  other?: ConversationOther;
+  lastMessage?: LastMessage;
+  unreadCount: number;
+  myLastReadAt?: string | null;
+  /** دفاعي: صيغة بديلة محتملة لحقل آخر قراءة للطرف الآخر */
+  otherLastReadAt?: string | null;
+}
+
+export type MsgStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  type: 'text' | 'system' | string;
+  text: string;
+  clientId?: string | null;
+  createdAt: string;
+  sender?: { id: string; name: string; avatarColor: string };
+  /** حقل واجهة فقط (لا يأتي من الخادم دائماً) */
+  status?: MsgStatus;
+}
+
+const TOKEN_KEY = 'ic_token';
+const ME_KEY = 'ic_me';
+
+export class ApiError extends Error {
+  status: number;
+  payload: unknown;
+
+  constructor(status: number, payload: unknown, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
+export function getToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string): void {
+  window.localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearToken(): void {
+  window.localStorage.removeItem(TOKEN_KEY);
+}
+
+export function storeMe(me: Me): void {
+  window.localStorage.setItem(ME_KEY, JSON.stringify(me));
+}
+
+export function readStoredMe(): Me | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(ME_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as Me;
+  } catch {
+    return null;
+  }
+}
+
+export function clearStoredMe(): void {
+  window.localStorage.removeItem(ME_KEY);
+}
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (init?.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  const token = getToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  let res: Response;
+  try {
+    res = await fetch(path, { ...init, headers, cache: 'no-store' });
+  } catch {
+    throw new ApiError(0, null, 'تعذر الوصول للخادم — تحقق من اتصالك');
+  }
+
+  const text = await res.text();
+  let payload: unknown = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = null;
+    }
+  }
+
+  if (!res.ok) {
+    const rec = (payload ?? {}) as Record<string, unknown>;
+    const msg =
+      typeof rec.error === 'string' && rec.error
+        ? translateError(rec.error, res.status)
+        : `فشل الطلب (${res.status})`;
+    throw new ApiError(res.status, payload, msg);
+  }
+  return payload as T;
+}
+
+function translateError(code: string, status: number): string {
+  switch (code) {
+    case 'NAME_REQUIRED':
+      return 'NAME_REQUIRED';
+    case 'INVALID_CODE':
+    case 'OTP_INVALID':
+      return 'رمز التحقق غير صحيح أو منتهي الصلاحية';
+    case 'PHONE_REQUIRED':
+      return 'يرجى إدخال رقم هاتف صحيح';
+    case 'UNAUTHORIZED':
+      return 'انتهت الجلسة، يرجى تسجيل الدخول مجدداً';
+    case 'FORBIDDEN':
+      return 'لا تملك صلاحية الوصول لهذه المحادثة';
+    case 'NOT_FOUND':
+      return 'غير موجود';
+    default:
+      return status === 0 ? 'تعذر الوصول للخادم' : `حدث خطأ (${status})`;
+  }
+}
+
+/* ----------------------------- المصادقة ----------------------------- */
+
+export interface RequestOtpResult {
+  ok?: boolean;
+  code?: string;
+  isNew?: boolean;
+  error?: string;
+}
+
+export function requestOtp(phone: string): Promise<RequestOtpResult> {
+  return apiFetch<RequestOtpResult>('/api/auth/request-otp', {
+    method: 'POST',
+    body: JSON.stringify({ phone }),
+  });
+}
+
+export interface VerifyResult {
+  token: string;
+  user: Me;
+}
+
+export function verifyOtp(phone: string, code: string, name?: string): Promise<VerifyResult> {
+  return apiFetch<VerifyResult>('/api/auth/verify', {
+    method: 'POST',
+    body: JSON.stringify(name ? { phone, code, name } : { phone, code }),
+  });
+}
+
+export function fetchMe(): Promise<{ user: Me }> {
+  return apiFetch<{ user: Me }>('/api/auth/me');
+}
+
+export function apiLogout(): Promise<{ ok?: boolean }> {
+  return apiFetch<{ ok?: boolean }>('/api/auth/logout', { method: 'POST' });
+}
+
+/* -------------------------- المستخدمون والمحادثات -------------------------- */
+
+export function fetchUsers(): Promise<{ users: UserSummary[] }> {
+  return apiFetch<{ users: UserSummary[] }>('/api/users');
+}
+
+export function fetchConversations(): Promise<{ conversations: Conversation[] }> {
+  return apiFetch<{ conversations: Conversation[] }>('/api/conversations');
+}
+
+export interface CreatedConversation {
+  id: string;
+  type: string;
+  name?: string | null;
+  other?: ConversationOther;
+}
+
+export function createConversation(userId: string): Promise<{ conversation: CreatedConversation }> {
+  return apiFetch<{ conversation: CreatedConversation }>('/api/conversations', {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export function fetchMessages(conversationId: string, before?: string): Promise<{ messages: ChatMessage[] }> {
+  const q = before ? `?before=${encodeURIComponent(before)}` : '';
+  return apiFetch<{ messages: ChatMessage[] }>(
+    `/api/conversations/${encodeURIComponent(conversationId)}/messages${q}`
+  );
+}

@@ -1,0 +1,55 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+/build
+next-env.d.ts
+
+# production standalone
+/.next/standalone
+
+# runtime databases (تُنشأ محلياً)
+/db/*.db
+/db/*.db-wal
+/db/*.db-shm
+*.db
+*.db-journal
+
+# env files (لكن يبقى .env.example مرفوعاً)
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev.log
+dev-run.log
+server.log
+service.log
+
+# misc
+.DS_Store
+*.pem
+/coverage
+/.idea
+/.vscode
+*.tsbuildinfo
+
+# agent/sandbox workspace files (خارج نطاق البرنامج)
+/worklog.md
+/instant-chat-notes.md
+/upload
+/examples
+/tests
+/download
+/skills
+/.github-publish
+/apk-sim.tmp.ts
+/dbg.tmp.ts
