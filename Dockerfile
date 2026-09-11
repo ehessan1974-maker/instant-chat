@@ -30,4 +30,5 @@ COPY docker/start.sh /start.sh
 RUN chmod +x /start.sh && mkdir -p /app/db/voice
 
 EXPOSE 7860
-CMD ["/start.sh"]
+# تشغيل عبر sh مباشرة — لا يعتمد على صلاحية تنفيذ الملف
+CMD ["sh", "/start.sh"]

@@ -5,6 +5,7 @@
 # ============================================================
 set -e
 
+echo "[start] تحضير قاعدة البيانات..."
 mkdir -p /app/db/voice
 
 # أول تشغيل: نسخ قاعدة بيانات نظيفة بالهيكل الصحيح
@@ -16,12 +17,16 @@ export DATABASE_URL="file:/app/db/custom.db"
 export VOICE_DIR="/app/db/voice"
 
 # 1) خدمة الرسائل على 3003
+echo "[start] تشغيل خدمة الرسائل على 3003..."
 cd /app/chat-service
 CHAT_PORT=3003 PORT=3003 ./node_modules/.bin/tsx index.ts &
 
 # 2) واجهة Next.js على 3000
+echo "[start] تشغيل واجهة Next.js على 3000..."
 cd /app
 PORT=3000 HOSTNAME=127.0.0.1 node server.js &
 
 # 3) وكيل Caddy على المنفذ الخارجي (يعمل في المقدمة)
+echo "[start] تشغيل وكيل Caddy على المنفذ ${PORT:-7860}..."
+chmod +x /usr/local/bin/caddy 2>/dev/null || true
 exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
