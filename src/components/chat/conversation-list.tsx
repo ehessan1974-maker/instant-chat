@@ -20,7 +20,7 @@ interface ConversationListProps {
 }
 
 function displayName(c: Conversation): string {
-  if (c.type === 'group') return c.name || 'الغرفة العامة';
+  if (c.type === 'group') return c.name || 'مجموعة';
   return c.other?.name || 'مستخدم';
 }
 
@@ -38,10 +38,12 @@ function buildPreview(c: Conversation, me: Me): Preview | null {
   if (c.type === 'group') {
     if (lm.type === 'system') return { text: lm.text, mine: false, read: false };
     const prefix = mine ? 'أنا: ' : `${lm.senderName || 'شخص'}: `;
-    return { text: `${prefix}${lm.text}`, mine, read: false };
+    const body = lm.type === 'voice' ? '🎙️ رسالة صوتية' : lm.text;
+    return { text: `${prefix}${body}`, mine, read: false };
   }
   const read = ts(c.otherLastReadAt ?? c.other?.lastReadAt) > 0 && ts(lm.createdAt) <= ts(c.otherLastReadAt ?? c.other?.lastReadAt);
-  return { text: `${mine ? 'أنا: ' : ''}${lm.text}`, mine, read };
+  const body = lm.type === 'voice' ? '🎙️ رسالة صوتية' : lm.text;
+  return { text: `${mine ? 'أنا: ' : ''}${body}`, mine, read };
 }
 
 export function ConversationList({

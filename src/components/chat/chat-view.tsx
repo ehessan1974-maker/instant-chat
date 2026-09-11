@@ -19,15 +19,20 @@ import {
   Clock,
   Loader2,
   Mic,
+  Phone,
   RotateCcw,
   Send,
   Smile,
+  Trash2,
+  Video,
 } from 'lucide-react';
 import type { Socket } from 'socket.io-client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ChatAvatar } from '@/components/chat/avatar';
 import { EmojiPicker } from '@/components/chat/emoji-picker';
-import { emitSocket } from '@/lib/chat-socket';
+import { VoiceBubble } from '@/components/chat/voice-bubble';
+import { useVoiceRecorder, type VoiceRecordingResult } from '@/components/chat/voice-recorder';
+import { emitSocket, getSocket } from '@/lib/chat-socket';
 import { ApiError, fetchMessages, type ChatMessage, type Conversation, type Me, type MsgStatus } from '@/lib/chat-api';
 import { dayLabel, formatTime, lastSeenLabel, newClientId, ts } from '@/lib/chat-utils';
 import { playSent } from '@/lib/sounds';
@@ -39,6 +44,10 @@ interface ChatViewProps {
   onlineIds: Set<string>;
   isMobile: boolean;
   onBack: () => void;
+  /** فتح معلومات المجموعة — يُمرر من page.tsx (اختياري وآمن غيابه) */
+  onOpenGroupInfo?: () => void;
+  /** بدء مكالمة صوتية/فيديو — يُمرر من page.tsx (يظهر فقط للمحادثات الخاصة) */
+  onStartCall?: (kind: 'audio' | 'video') => void;
 }
 
 interface SocketMessagePayload {
@@ -64,6 +73,13 @@ interface JoinedPayload {
 }
 
 const MESSAGES_PAGE = 50;
+
+/** صيغة m:ss لمؤقت التسجيل */
+function formatSeconds(total: number): string {
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 function isMine(m: ChatMessage, me: Me): boolean {
   return m.senderId === me.id;
@@ -141,21 +157,36 @@ function Bubble({ msg, me, isGroup, status, animate, onRetry }: BubbleProps) {
           </div>
         )}
         <div className="flex items-end gap-1.5">
-          <span
-            dir="auto"
-            className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${
-              failed ? 'text-[#7a2b2b]' : 'text-[#111b21]'
-            }`}
-          >
-            {msg.text}
-          </span>
+          {msg.type === 'voice' ? (
+            msg.mediaUrl ? (
+              <VoiceBubble url={msg.mediaUrl} durationMs={msg.durationMs ?? null} mine={mine} status={status} />
+            ) : (
+              <span
+                dir="auto"
+                className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${
+                  failed ? 'text-[#7a2b2b]' : 'text-[#111b21]'
+                }`}
+              >
+                🎙️ رسالة صوتية
+              </span>
+            )
+          ) : (
+            <span
+              dir="auto"
+              className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${
+                failed ? 'text-[#7a2b2b]' : 'text-[#111b21]'
+              }`}
+            >
+              {msg.text}
+            </span>
+          )}
           <span
             dir="ltr"
             className="mb-px flex shrink-0 items-center gap-0.5 text-[10px] leading-none text-[#667781]"
           >
             {formatTime(msg.createdAt)}
             {mine && <Ticks status={status} isPrivate={!isGroup} />}
-            {mine && failed && (
+            {mine && failed && msg.type === 'text' && (
               <button
                 type="button"
                 onClick={() => onRetry(msg)}
@@ -172,7 +203,16 @@ function Bubble({ msg, me, isGroup, status, animate, onRetry }: BubbleProps) {
   );
 }
 
-export function ChatView({ conversation, me, socket, onlineIds, isMobile, onBack }: ChatViewProps) {
+export function ChatView({
+  conversation,
+  me,
+  socket,
+  onlineIds,
+  isMobile,
+  onBack,
+  onOpenGroupInfo,
+  onStartCall,
+}: ChatViewProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [statusMap, setStatusMap] = useState<Record<string, MsgStatus>>({});
   const [loading, setLoading] = useState(true);
@@ -238,7 +278,7 @@ export function ChatView({ conversation, me, socket, onlineIds, isMobile, onBack
   function computeInitialStatuses(list: ChatMessage[]): Record<string, MsgStatus> {
     const map: Record<string, MsgStatus> = {};
     for (const m of list) {
-      if (m.type !== 'text' || m.senderId !== meRef.current.id) continue;
+      if ((m.type !== 'text' && m.type !== 'voice') || m.senderId !== meRef.current.id) continue;
       map[m.id] = otherLastReadTs > 0 && ts(m.createdAt) <= otherLastReadTs ? 'read' : 'sent';
     }
     return map;
@@ -313,6 +353,11 @@ export function ChatView({ conversation, me, socket, onlineIds, isMobile, onBack
       if (echoIdx >= 0) {
         const tmpId = prev[echoIdx].id;
         clearFailTimer(tmpId);
+        // تحرير رابط الكائن المحلي المؤقت للفقاعة الصوتية بعد الاستبدال (بمهلة احتياطية)
+        const tmpUrl = prev[echoIdx].mediaUrl;
+        if (tmpUrl && tmpUrl.startsWith('blob:')) {
+          setTimeout(() => URL.revokeObjectURL(tmpUrl), 15000);
+        }
         setMessages((cur) =>
           cur.map((m) => (msg.clientId && m.clientId === msg.clientId ? { ...msg } : m))
         );
@@ -334,7 +379,7 @@ export function ChatView({ conversation, me, socket, onlineIds, isMobile, onBack
       const otherRead = ts(conversationRef.current.otherLastReadAt ?? conversationRef.current.other?.lastReadAt);
       setMessages((cur) => [...cur, { ...msg }].sort((a, b) => cmpTime(a.createdAt, b.createdAt)));
       markAnimated(messageKey(msg));
-      if (!isMineMsg && msg.type === 'text') {
+      if (!isMineMsg && (msg.type === 'text' || msg.type === 'voice')) {
         setStatusMap((sm) => ({
           ...sm,
           [msg.id]: otherRead > 0 && ts(msg.createdAt) <= otherRead ? 'read' : 'sent',
@@ -366,7 +411,7 @@ export function ChatView({ conversation, me, socket, onlineIds, isMobile, onBack
         let changed = false;
         const next: Record<string, MsgStatus> = { ...prev };
         for (const m of messagesRef.current) {
-          if (m.type !== 'text' || m.senderId !== meRef.current.id) continue;
+          if ((m.type !== 'text' && m.type !== 'voice') || m.senderId !== meRef.current.id) continue;
           const cur = next[m.id];
           if (cur === 'pending' || cur === 'failed' || cur === undefined) continue;
           const rank: Record<string, number> = { sent: 1, delivered: 2, read: 3 };
@@ -549,6 +594,65 @@ export function ChatView({ conversation, me, socket, onlineIds, isMobile, onBack
     sendText(msg.text, msg.id);
   }
 
+  /* -------------------------- الرسائل الصوتية -------------------------- */
+  /** إرسال رسالة صوتية: فقاعة متفائلة قابلة للتشغيل محلياً + send_voice عبر السوكيت */
+  function sendVoice(result: VoiceRecordingResult): void {
+    const convId = conversationRef.current.id;
+    const clientId = newClientId();
+    const tmpId = `tmp-${clientId}`;
+
+    const temp: ChatMessage = {
+      id: tmpId,
+      conversationId: convId,
+      senderId: meRef.current.id,
+      type: 'voice',
+      text: '',
+      mediaUrl: URL.createObjectURL(result.blob),
+      durationMs: result.durationMs,
+      clientId,
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, temp].sort((a, b) => cmpTime(a.createdAt, b.createdAt)));
+    markAnimated(messageKey(temp));
+    setStatusMap((prev) => ({ ...prev, [tmpId]: 'pending' }));
+    scheduleFailTimer(tmpId);
+
+    const markFailed = (): void => {
+      setStatusMap((prev) => (prev[tmpId] === 'pending' ? { ...prev, [tmpId]: 'failed' } : prev));
+    };
+
+    // Blob → base64 (اقتطاع الجزء بعد 'base64,')
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+      const audioBase64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+      // ack عبر السينغلتون مباشرة (emitSocket لا يمرر ack) — نفس اتصال emitSocket تماماً
+      getSocket()?.emit(
+        'send_voice',
+        { conversationId: convId, clientId, durationMs: result.durationMs, mime: result.mime, audioBase64 },
+        (r?: { ok?: boolean; message?: string }) => {
+          if (!r?.ok) markFailed();
+        }
+      );
+    };
+    reader.onerror = () => markFailed();
+    reader.readAsDataURL(result.blob);
+
+    playSent();
+    pendingBottomRef.current = 'smooth';
+    nearBottomRef.current = true;
+    setShowJump(false);
+    setNewCount(0);
+  }
+
+  const recorder = useVoiceRecorder(sendVoice);
+
+  function handleStartRecording(): void {
+    setEmojiOpen(false);
+    void recorder.start();
+  }
+
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
@@ -575,7 +679,12 @@ export function ChatView({ conversation, me, socket, onlineIds, isMobile, onBack
         setStatusMap((prev) => {
           const next = { ...prev };
           for (const m of older) {
-            if (m.type !== 'text' || m.senderId !== meRef.current.id || next[m.id]) continue;
+            if (
+              (m.type !== 'text' && m.type !== 'voice') ||
+              m.senderId !== meRef.current.id ||
+              next[m.id]
+            )
+              continue;
             next[m.id] = otherLastReadTs > 0 && ts(m.createdAt) <= otherLastReadTs ? 'read' : 'sent';
           }
           return next;
@@ -641,7 +750,10 @@ export function ChatView({ conversation, me, socket, onlineIds, isMobile, onBack
         msg={m}
         me={me}
         isGroup={isGroup}
-        status={statusMap[m.id] ?? (isMine(m, me) && m.type === 'text' ? 'sent' : undefined)}
+        status={
+          statusMap[m.id] ??
+          (isMine(m, me) && (m.type === 'text' || m.type === 'voice') ? 'sent' : undefined)
+        }
         animate={animatedKeys.has(key)}
         onRetry={handleRetry}
       />
@@ -662,20 +774,53 @@ export function ChatView({ conversation, me, socket, onlineIds, isMobile, onBack
             <ArrowRight className="h-6 w-6" />
           </button>
         )}
-        <ChatAvatar
-          name={isGroup ? undefined : other?.name}
-          color={other?.avatarColor}
-          group={isGroup}
-          size={38}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-bold">
-            {isGroup ? conversation.name || 'الغرفة العامة' : other?.name || 'مستخدم'}
-          </div>
-          <div className="truncate text-xs text-white/85" aria-live="polite">
-            {headerStatus()}
-          </div>
-        </div>
+        {isGroup ? (
+          <button
+            type="button"
+            onClick={onOpenGroupInfo}
+            disabled={!onOpenGroupInfo}
+            aria-label="معلومات المجموعة"
+            className="-m-1 flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg p-1 text-start transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/60 disabled:cursor-default disabled:hover:bg-transparent"
+          >
+            <ChatAvatar group size={38} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-bold">{conversation.name || 'الغرفة العامة'}</span>
+              <span className="block truncate text-xs text-white/85" aria-live="polite">
+                {headerStatus()}
+              </span>
+            </span>
+          </button>
+        ) : (
+          <>
+            {other && onStartCall && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onStartCall('audio')}
+                  aria-label="مكالمة صوتية"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/10"
+                >
+                  <Phone className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onStartCall('video')}
+                  aria-label="مكالمة فيديو"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/10"
+                >
+                  <Video className="h-5 w-5" />
+                </button>
+              </>
+            )}
+            <ChatAvatar name={other?.name} color={other?.avatarColor} group={false} size={38} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-bold">{other?.name || 'مستخدم'}</div>
+              <div className="truncate text-xs text-white/85" aria-live="polite">
+                {headerStatus()}
+              </div>
+            </div>
+          </>
+        )}
       </header>
 
       {/* جسم المحادثة */}
@@ -757,61 +902,97 @@ export function ChatView({ conversation, me, socket, onlineIds, isMobile, onBack
         className="relative shrink-0 border-t border-black/5 bg-[#f0f2f5]"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        {emojiOpen && (
-          <EmojiPicker
-            onPick={(emoji) => {
-              setDraft((d) => d + emoji);
-              requestAnimationFrame(() => {
-                autoresizeTextarea();
-                draftRef.current?.focus();
-              });
-            }}
-            onClose={() => setEmojiOpen(false)}
-          />
+        {recorder.error && !recorder.recording && (
+          <p role="alert" className="px-3 pt-2 text-xs font-medium text-red-600">
+            {recorder.error}
+          </p>
         )}
-        <div className="flex items-end gap-1.5 p-2">
-          <button
-            type="button"
-            data-emoji-toggle
-            onClick={() => setEmojiOpen((o) => !o)}
-            aria-label="إظهار قائمة الإيموجي"
-            aria-expanded={emojiOpen}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#54656f] transition-colors hover:bg-black/5"
-          >
-            <Smile className="h-6 w-6" />
-          </button>
 
-          <textarea
-            ref={draftRef}
-            value={draft}
-            onChange={(e) => handleDraftChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            placeholder="اكتب رسالة"
-            aria-label="نص الرسالة"
-            className="max-h-[58px] min-h-[44px] flex-1 resize-none rounded-2xl bg-white px-4 py-2.5 text-sm leading-relaxed text-[#111b21] outline-none placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30"
-          />
-
-          {draft.trim() ? (
+        {recorder.recording ? (
+          <div className="flex items-center gap-1.5 p-2" role="status" aria-label="جاري تسجيل رسالة صوتية">
             <button
               type="button"
-              onClick={handleSend}
-              aria-label="إرسال الرسالة"
+              onClick={recorder.cancel}
+              aria-label="إلغاء التسجيل الصوتي"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-red-500 transition-colors hover:bg-red-500/10 active:scale-95"
+            >
+              <Trash2 className="h-5 w-5" />
+            </button>
+            <div className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-full bg-[#fbe3e3] px-4">
+              <span className="h-3 w-3 shrink-0 animate-pulse rounded-full bg-red-500" aria-hidden="true" />
+              <span dir="ltr" className="text-sm font-bold tabular-nums text-[#7a2b2b]">
+                {formatSeconds(recorder.seconds)}
+              </span>
+              <span className="truncate text-xs text-[#7a2b2b]/80">جاري التسجيل…</span>
+            </div>
+            <button
+              type="button"
+              onClick={recorder.stop}
+              aria-label="إرسال الرسالة الصوتية"
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white shadow transition-all hover:bg-[#017561] active:scale-95"
             >
               <Send className="h-5 w-5 -scale-x-100" />
             </button>
-          ) : (
-            <button
-              type="button"
-              disabled
-              aria-label="تسجيل صوتي — ميزة قادمة"
-              className="flex h-11 w-11 shrink-0 cursor-not-allowed items-center justify-center rounded-full text-[#8696a0]"
-            >
-              <Mic className="h-6 w-6" />
-            </button>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            {emojiOpen && (
+              <EmojiPicker
+                onPick={(emoji) => {
+                  setDraft((d) => d + emoji);
+                  requestAnimationFrame(() => {
+                    autoresizeTextarea();
+                    draftRef.current?.focus();
+                  });
+                }}
+                onClose={() => setEmojiOpen(false)}
+              />
+            )}
+            <div className="flex items-end gap-1.5 p-2">
+              <button
+                type="button"
+                data-emoji-toggle
+                onClick={() => setEmojiOpen((o) => !o)}
+                aria-label="إظهار قائمة الإيموجي"
+                aria-expanded={emojiOpen}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#54656f] transition-colors hover:bg-black/5"
+              >
+                <Smile className="h-6 w-6" />
+              </button>
+
+              <textarea
+                ref={draftRef}
+                value={draft}
+                onChange={(e) => handleDraftChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                rows={1}
+                placeholder="اكتب رسالة"
+                aria-label="نص الرسالة"
+                className="max-h-[58px] min-h-[44px] flex-1 resize-none rounded-2xl bg-white px-4 py-2.5 text-sm leading-relaxed text-[#111b21] outline-none placeholder:text-[#8696a0] focus:ring-2 focus:ring-[#00a884]/30"
+              />
+
+              {draft.trim() ? (
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  aria-label="إرسال الرسالة"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white shadow transition-all hover:bg-[#017561] active:scale-95"
+                >
+                  <Send className="h-5 w-5 -scale-x-100" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleStartRecording}
+                  aria-label="تسجيل رسالة صوتية"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 active:scale-95"
+                >
+                  <Mic className="h-6 w-6" />
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

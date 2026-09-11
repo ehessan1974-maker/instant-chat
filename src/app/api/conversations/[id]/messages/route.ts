@@ -75,6 +75,8 @@ export async function GET(
         senderId: m.senderId,
         type: m.type,
         text: m.text,
+        ...(m.mediaUrl !== null ? { mediaUrl: m.mediaUrl } : {}),
+        ...(m.durationMs !== null ? { durationMs: m.durationMs } : {}),
         ...(m.clientId !== null ? { clientId: m.clientId } : {}),
         createdAt: m.createdAt,
         sender: {

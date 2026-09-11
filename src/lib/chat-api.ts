@@ -25,6 +25,16 @@ export interface LastMessage {
   senderId: string;
   senderName?: string | null;
   type?: string;
+  mediaUrl?: string | null;
+  durationMs?: number | null;
+}
+
+/** عضو مجموعة */
+export interface GroupMember {
+  id: string;
+  name: string;
+  avatarColor: string;
+  phone?: string | null;
 }
 
 export interface ConversationOther {
@@ -41,6 +51,10 @@ export interface Conversation {
   type: 'private' | 'group' | string;
   name?: string | null;
   other?: ConversationOther;
+  /** للمجموعات: قائمة الأعضاء الكاملة */
+  members?: GroupMember[];
+  /** للمجموعات: مُنشئ المجموعة (admin) */
+  creatorId?: string | null;
   lastMessage?: LastMessage;
   unreadCount: number;
   myLastReadAt?: string | null;
@@ -54,8 +68,12 @@ export interface ChatMessage {
   id: string;
   conversationId: string;
   senderId: string;
-  type: 'text' | 'system' | string;
+  type: 'text' | 'voice' | 'system' | string;
   text: string;
+  /** للرسائل الصوتية: رابط الملف الصوتي */
+  mediaUrl?: string | null;
+  /** للرسائل الصوتية: المدة بالمللي ثانية */
+  durationMs?: number | null;
   clientId?: string | null;
   createdAt: string;
   sender?: { id: string; name: string; avatarColor: string };
@@ -204,8 +222,9 @@ export function apiLogout(): Promise<{ ok?: boolean }> {
 
 /* -------------------------- المستخدمون والمحادثات -------------------------- */
 
-export function fetchUsers(): Promise<{ users: UserSummary[] }> {
-  return apiFetch<{ users: UserSummary[] }>('/api/users');
+export function fetchUsers(q?: string): Promise<{ users: UserSummary[] }> {
+  const query = q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
+  return apiFetch<{ users: UserSummary[] }>(`/api/users${query}`);
 }
 
 export function fetchConversations(): Promise<{ conversations: Conversation[] }> {

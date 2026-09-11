@@ -45,7 +45,8 @@ model Conversation {
   id           String   @id @default(cuid())
   type         String // 'private' | 'group'
   name         String? // group display name
-  key          String?  @unique // private: sorted "idA|idB" ; public room: "PUBLIC"
+  key          String?  @unique // private: sorted "idA|idB" ; legacy public room: "PUBLIC"
+  creatorId    String? // group creator (admin) userId
   createdAt    DateTime @default(now())
   participants ConversationParticipant[]
   messages     Message[]
@@ -70,8 +71,10 @@ model Message {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   senderId       String
   sender         User         @relation(fields: [senderId], references: [id])
-  type           String       @default("text") // 'text' | 'system'
+  type           String       @default("text") // 'text' | 'voice' | 'system'
   text           String
+  mediaUrl       String? // voice: /api/media/voice/<file>
+  durationMs     Int? // voice duration in milliseconds
   clientId       String? // client-generated id for optimistic UI dedup
   createdAt      DateTime     @default(now())
 

@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, LogOut, MessageCircle } from 'lucide-react';
 import type { Socket } from 'socket.io-client';
 import { ChatAvatar } from '@/components/chat/avatar';
+import { CallOverlay } from '@/components/chat/call-overlay';
 import { ChatView } from '@/components/chat/chat-view';
 import { ConversationList } from '@/components/chat/conversation-list';
+import { GroupInfoDialog } from '@/components/chat/group-info-dialog';
 import { LoginScreen } from '@/components/chat/login-screen';
 import { NewChatDialog } from '@/components/chat/new-chat-dialog';
 import {
@@ -18,24 +20,24 @@ import {
   getToken,
   type ChatMessage,
   type Conversation,
+  type GroupMember,
   type Me,
 } from '@/lib/chat-api';
 import { connectChatSocket, disconnectChatSocket } from '@/lib/chat-socket';
+import { useCall } from '@/lib/use-call';
 import { ts } from '@/lib/chat-utils';
 import { ensureAudio, playIncoming } from '@/lib/sounds';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 type Phase = 'boot' | 'login' | 'main';
 
-/** ترتيب القائمة: الغرفة العامة أولاً، ثم بحسب آخر رسالة تنازلياً، ثم بلا رسائل */
+/** ترتيب القائمة: كل المحادثات حسب آخر رسالة تنازلياً، ثم بلا رسائل في النهاية */
 function sortConversations(list: Conversation[]): Conversation[] {
-  const pub = list.filter((c) => c.type === 'group');
-  const rest = list.filter((c) => c.type !== 'group');
-  const withMsg = rest
+  const withMsg = list
     .filter((c) => !!c.lastMessage)
     .sort((a, b) => ts(b.lastMessage?.createdAt) - ts(a.lastMessage?.createdAt));
-  const without = rest.filter((c) => !c.lastMessage);
-  return [...pub, ...withMsg, ...without];
+  const without = list.filter((c) => !c.lastMessage);
+  return [...withMsg, ...without];
 }
 
 interface NewMessagePayload {
@@ -60,6 +62,19 @@ interface TypingPayload {
   username?: string;
 }
 
+interface GroupCreatedPayload {
+  conversation?: Conversation;
+}
+
+interface GroupMembersChangedPayload {
+  conversationId?: string;
+  members?: GroupMember[];
+}
+
+interface GroupLeftPayload {
+  conversationId?: string;
+}
+
 export default function HomePage() {
   const [phase, setPhase] = useState<Phase>('boot');
   const [me, setMe] = useState<Me | null>(null);
@@ -70,6 +85,7 @@ export default function HomePage() {
   const [connected, setConnected] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [newChatOpen, setNewChatOpen] = useState(false);
+  const [groupInfoOpen, setGroupInfoOpen] = useState(false);
   const [typingPreviews, setTypingPreviews] = useState<Record<string, { name: string; ts: number }>>({});
 
   const isMobile = useIsMobile();
@@ -171,6 +187,8 @@ export default function HomePage() {
           const idx = prev.findIndex((c) => c.id === msg.conversationId);
           if (idx === -1) return prev;
           const c = prev[idx];
+          // رسائل النظام لا تُرفع شارة غير المقروء ولا تُنغّم
+          const bumpUnread = !isMine && !isOpen && msg.type !== 'system';
           const updated: Conversation = {
             ...c,
             lastMessage: {
@@ -180,8 +198,10 @@ export default function HomePage() {
               senderId: msg.senderId,
               senderName: msg.sender?.name ?? null,
               type: msg.type,
+              mediaUrl: msg.mediaUrl ?? null,
+              durationMs: msg.durationMs ?? null,
             },
-            unreadCount: isMine || isOpen ? 0 : c.unreadCount + 1,
+            unreadCount: isMine || isOpen ? 0 : bumpUnread ? c.unreadCount + 1 : c.unreadCount,
           };
           const next = prev.slice();
           next[idx] = updated;
@@ -192,7 +212,7 @@ export default function HomePage() {
         void refreshConversations();
       }
 
-      if (!isMine && !isOpen) playIncoming();
+      if (!isMine && !isOpen && msg.type !== 'system') playIncoming();
     };
 
     const onPresence = (payload: PresencePayload) => {
@@ -233,6 +253,38 @@ export default function HomePage() {
       });
     };
 
+    const onGroupCreated = (payload: GroupCreatedPayload) => {
+      const conv = payload?.conversation;
+      if (!conv) return;
+      setConversations((prev) => {
+        const normalized: Conversation = { ...conv, unreadCount: conv.unreadCount ?? 0 };
+        const idx = prev.findIndex((c) => c.id === conv.id);
+        if (idx >= 0) {
+          const next = prev.slice();
+          // حافظ على الحالة المحلية (مقروء/مفتوح) وحدّث بيانات المجموعة فقط
+          next[idx] = { ...prev[idx], ...normalized };
+          return sortConversations(next);
+        }
+        return sortConversations([normalized, ...prev]);
+      });
+    };
+
+    const onGroupMembersChanged = (payload: GroupMembersChangedPayload) => {
+      const convId = payload?.conversationId;
+      if (!convId || !payload.members) return;
+      setConversations((prev) =>
+        prev.map((c) => (c.id === convId ? { ...c, members: payload.members } : c))
+      );
+    };
+
+    const onGroupLeft = (payload: GroupLeftPayload) => {
+      const convId = payload?.conversationId;
+      if (!convId) return;
+      setConversations((prev) => prev.filter((c) => c.id !== convId));
+      setActiveId((cur) => (cur === convId ? null : cur));
+      setGroupInfoOpen(false);
+    };
+
     s.on('connect', onConnect);
     s.on('disconnect', onDisconnect);
     s.on('auth_ok', onAuthOk);
@@ -240,6 +292,9 @@ export default function HomePage() {
     s.on('presence', onPresence);
     s.on('user_typing', onTyping);
     s.on('user_stopped_typing', onStopTyping);
+    s.on('group_created', onGroupCreated);
+    s.on('group_members_changed', onGroupMembersChanged);
+    s.on('group_left', onGroupLeft);
 
     return () => {
       s.off('connect', onConnect);
@@ -249,6 +304,9 @@ export default function HomePage() {
       s.off('presence', onPresence);
       s.off('user_typing', onTyping);
       s.off('user_stopped_typing', onStopTyping);
+      s.off('group_created', onGroupCreated);
+      s.off('group_members_changed', onGroupMembersChanged);
+      s.off('group_left', onGroupLeft);
     };
   }, [phase, me, refreshConversations]);
 
@@ -308,6 +366,8 @@ export default function HomePage() {
     setOnlineIds(new Set());
     setTypingPreviews({});
     setActiveId(null);
+    setGroupInfoOpen(false);
+    setNewChatOpen(false);
     setConnected(false);
     setPhase('login');
     document.title = 'محادثة فورية';
@@ -318,6 +378,18 @@ export default function HomePage() {
     [conversations, activeId]
   );
   const typingConvIds = useMemo(() => new Set(Object.keys(typingPreviews)), [typingPreviews]);
+
+  /* -------------------------- المكالمات (WebRTC) -------------------------- */
+  const callApi = useCall(me, socket);
+
+  const handleStartCall = useCallback(
+    (kind: 'audio' | 'video') => {
+      const o = activeConv?.other;
+      if (!o || !me) return;
+      void callApi.startCall(o.id, { id: o.id, name: o.name, avatarColor: o.avatarColor }, kind);
+    },
+    [activeConv, me, callApi]
+  );
 
   /* -------------------------- العرض -------------------------- */
   if (phase === 'boot') {
@@ -413,6 +485,8 @@ export default function HomePage() {
               onlineIds={onlineIds}
               isMobile={!!isMobile}
               onBack={() => setActiveId(null)}
+              onOpenGroupInfo={activeConv.type === 'group' ? () => setGroupInfoOpen(true) : undefined}
+              onStartCall={activeConv.type === 'private' ? handleStartCall : undefined}
             />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 bg-[#f0f2f5] px-6 text-center">
@@ -422,7 +496,7 @@ export default function HomePage() {
               <p className="text-lg font-bold text-[#111b21]">محادثة فورية</p>
               <p className="text-sm text-[#667781]">اختر محادثة للبدء</p>
               <p className="max-w-xs text-xs leading-relaxed text-[#8696a0]">
-                رسائلك تُنقل عبر اتصال مباشر آمن — ابدأ محادثة خاصة أو انضم للغرفة العامة
+                رسائلك تُنقل عبر اتصال مباشر آمن — ابدأ محادثة خاصة أو أنشئ مجموعة وضم إليها من تريد
               </p>
             </div>
           )}
@@ -435,6 +509,41 @@ export default function HomePage() {
         onOpenChange={setNewChatOpen}
         onlineIds={onlineIds}
         onCreated={handleCreated}
+      />
+
+      {/* معلومات المجموعة (أعضاء / إضافة / مغادرة) */}
+      {activeConv && me && activeConv.type === 'group' && (
+        <GroupInfoDialog
+          open={groupInfoOpen}
+          onOpenChange={setGroupInfoOpen}
+          conversation={activeConv}
+          meId={me.id}
+          onMembersChanged={(members) =>
+            setConversations((prev) =>
+              prev.map((c) => (c.id === activeConv.id ? { ...c, members } : c))
+            )
+          }
+          onLeft={() => {
+            setGroupInfoOpen(false);
+            setConversations((prev) => prev.filter((c) => c.id !== activeConv.id));
+            setActiveId(null);
+          }}
+        />
+      )}
+
+      {/* واجهة المكالمة (صوت / فيديو) */}
+      <CallOverlay
+        call={callApi.call}
+        localStream={callApi.localStream}
+        remoteStream={callApi.remoteStream}
+        muted={callApi.muted}
+        cameraOff={callApi.cameraOff}
+        elapsedSeconds={callApi.elapsedSeconds}
+        onAccept={() => void callApi.acceptCall()}
+        onReject={callApi.rejectCall}
+        onHangUp={callApi.hangUp}
+        onToggleMute={callApi.toggleMute}
+        onToggleCamera={callApi.toggleCamera}
       />
     </div>
   );

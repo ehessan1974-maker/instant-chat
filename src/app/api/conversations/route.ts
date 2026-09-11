@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { db, ensurePublicRoom } from '@/lib/db'
+import { db } from '@/lib/db'
 import { getSessionUser, readJsonRecord } from '@/lib/auth'
 
 interface OtherUser {
@@ -10,6 +10,13 @@ interface OtherUser {
   lastReadAt?: Date | null
 }
 
+interface MemberUser {
+  id: string
+  name: string
+  avatarColor: string
+  phone: string
+}
+
 interface LastMessage {
   id: string
   text: string
@@ -17,13 +24,17 @@ interface LastMessage {
   senderId: string
   senderName: string
   type: string
+  mediaUrl?: string | null
+  durationMs?: number | null
 }
 
 interface ConversationSummary {
   id: string
   type: string
   name?: string
+  creatorId?: string | null
   other?: OtherUser
+  members?: MemberUser[]
   lastMessage?: LastMessage
   unreadCount: number
   myLastReadAt: Date | null
@@ -36,29 +47,14 @@ const EPOCH = new Date(0)
  * GET /api/conversations
  * → { conversations: [...] } ordered by last-message time desc,
  *   conversations without messages at the end.
+ * The legacy public room (key='PUBLIC') is hidden from the web app —
+ * it only serves the old APK guests.
  */
 export async function GET(req: Request) {
   try {
     const me = await getSessionUser(req)
     if (!me) {
       return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
-    }
-
-    // Defensive auto-join: guarantee the public room is always in my list,
-    // even for sessions created before verify-time auto-join existed.
-    try {
-      const publicRoom = await ensurePublicRoom()
-      const joined = await db.conversationParticipant.findFirst({
-        where: { conversationId: publicRoom.id, userId: me.id },
-        select: { id: true },
-      })
-      if (!joined) {
-        await db.conversationParticipant.create({
-          data: { conversationId: publicRoom.id, userId: me.id },
-        })
-      }
-    } catch (e) {
-      console.error('[conversations] public-room auto-join failed:', e)
     }
 
     const participations = await db.conversationParticipant.findMany({
@@ -77,55 +73,67 @@ export async function GET(req: Request) {
       },
     })
 
-    const summaries: ConversationSummary[] = await Promise.all(
-      participations.map(async (p) => {
-        const conv = p.conversation
-        const lastRow = conv.messages[0] ?? null
-        const otherRow =
-          conv.type === 'private'
-            ? (conv.participants.find((x) => x.userId !== me.id) ?? null)
-            : null
-        const otherUser = otherRow?.user ?? null
+    const summaries: ConversationSummary[] = []
+    for (const p of participations) {
+      const conv = p.conversation
+      // hide the legacy public room from the web app
+      if (conv.key === 'PUBLIC') continue
+      const lastRow = conv.messages[0] ?? null
+      const otherRow =
+        conv.type === 'private'
+          ? (conv.participants.find((x) => x.userId !== me.id) ?? null)
+          : null
+      const otherUser = otherRow?.user ?? null
 
-        const unreadCount = await db.message.count({
-          where: {
-            conversationId: conv.id,
-            senderId: { not: me.id },
-            createdAt: { gt: p.lastReadAt ?? EPOCH },
-          },
-        })
-
-        const summary: ConversationSummary = {
-          id: conv.id,
-          type: conv.type,
-          unreadCount,
-          myLastReadAt: p.lastReadAt,
-        }
-        if (conv.type === 'group' && conv.name) summary.name = conv.name
-        if (otherUser) {
-          summary.other = {
-            id: otherUser.id,
-            name: otherUser.name,
-            avatarColor: otherUser.avatarColor,
-            lastSeen: otherUser.lastSeen,
-            lastReadAt: otherRow?.lastReadAt ?? null,
-          }
-          // top-level alias so clients can compute initial ✓✓ states
-          summary.otherLastReadAt = otherRow?.lastReadAt ?? null
-        }
-        if (lastRow) {
-          summary.lastMessage = {
-            id: lastRow.id,
-            text: lastRow.text,
-            createdAt: lastRow.createdAt,
-            senderId: lastRow.senderId,
-            senderName: lastRow.sender.name,
-            type: lastRow.type,
-          }
-        }
-        return summary
+      const unreadCount = await db.message.count({
+        where: {
+          conversationId: conv.id,
+          senderId: { not: me.id },
+          createdAt: { gt: p.lastReadAt ?? EPOCH },
+        },
       })
-    )
+
+      const summary: ConversationSummary = {
+        id: conv.id,
+        type: conv.type,
+        unreadCount,
+        myLastReadAt: p.lastReadAt,
+      }
+      if (conv.type === 'group') {
+        if (conv.name) summary.name = conv.name
+        summary.creatorId = conv.creatorId
+        summary.members = conv.participants.map((m) => ({
+          id: m.user.id,
+          name: m.user.name,
+          avatarColor: m.user.avatarColor,
+          phone: m.user.phone,
+        }))
+      }
+      if (otherUser) {
+        summary.other = {
+          id: otherUser.id,
+          name: otherUser.name,
+          avatarColor: otherUser.avatarColor,
+          lastSeen: otherUser.lastSeen,
+          lastReadAt: otherRow?.lastReadAt ?? null,
+        }
+        // top-level alias so clients can compute initial ✓✓ states
+        summary.otherLastReadAt = otherRow?.lastReadAt ?? null
+      }
+      if (lastRow) {
+        summary.lastMessage = {
+          id: lastRow.id,
+          text: lastRow.text,
+          createdAt: lastRow.createdAt,
+          senderId: lastRow.senderId,
+          senderName: lastRow.sender.name,
+          type: lastRow.type,
+          mediaUrl: lastRow.mediaUrl,
+          durationMs: lastRow.durationMs,
+        }
+      }
+      summaries.push(summary)
+    }
 
     summaries.sort((a, b) => {
       const ta = a.lastMessage ? a.lastMessage.createdAt.getTime() : null

@@ -1,11 +1,16 @@
 // ============================================================
 // chat-service — Socket.IO chat mini-service (port 3003)
 // + Legacy bridge for the old InstantChat APK (socket.io protocol)
-// Contract: /home/z/my-project/worklog.md === CONTRACT v1 ===
+// + Voice messages (MediaRecorder base64 → disk) + WebRTC call signaling
+// + Group management (create_group / add_members / leave_group)
+// Contract: /home/z/my-project/worklog.md === CONTRACT v2 ===
 // Schema:   /home/z/my-project/prisma/schema.prisma (shared SQLite)
 // Reference: /home/z/my-project/examples/websocket/server.ts
 // ============================================================
 import { createServer } from 'http'
+import { randomUUID } from 'crypto'
+import { mkdir, writeFile } from 'fs/promises'
+import path from 'path'
 import { Server, type Socket } from 'socket.io'
 import { PrismaClient } from '@prisma/client'
 
@@ -25,6 +30,14 @@ async function initSqlitePragmas(): Promise<void> {
     console.error('[chat-service] failed to set sqlite pragmas:', e)
   }
 }
+
+// ---------------------------------------------------------------------------
+// Voice storage — files land in <project>/db/voice (shared with the Next.js
+// media route which reads the same folder).
+// ---------------------------------------------------------------------------
+const VOICE_DIR = process.env.VOICE_DIR || path.resolve(process.cwd(), '../../db/voice')
+/** decoded binary size cap per voice note */
+const MAX_VOICE_BYTES = 10 * 1024 * 1024
 
 type PublicRoom = { id: string }
 let publicRoom: PublicRoom | null = null
@@ -105,6 +118,7 @@ function detachSocket(socketId: string): void {
 // the socket.io DEFAULT path '/socket.io' — which is exactly what the old
 // InstantChat APK uses with io(url). One server serves web + APK + custom
 // reverse-proxy setups. DO NOT change to '/socket.io' or the gateway breaks.
+// maxHttpBufferSize raised to carry base64 voice notes (≤ ~10MB binary).
 // ---------------------------------------------------------------------------
 const httpServer = createServer()
 const io = new Server(httpServer, {
@@ -112,6 +126,7 @@ const io = new Server(httpServer, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
   pingTimeout: 60000,
   pingInterval: 25000,
+  maxHttpBufferSize: 20e6,
 })
 
 type Sender = { id: string; name: string; avatarColor: string }
@@ -121,6 +136,8 @@ type DbMessage = {
   senderId: string
   type: string
   text: string
+  mediaUrl: string | null
+  durationMs: number | null
   clientId: string | null
   createdAt: Date
   sender: Sender
@@ -134,6 +151,8 @@ function officialMessage(m: DbMessage) {
     senderId: m.senderId,
     type: m.type,
     text: m.text,
+    mediaUrl: m.mediaUrl,
+    durationMs: m.durationMs,
     clientId: m.clientId,
     createdAt: m.createdAt.toISOString(),
     sender: { id: m.sender.id, name: m.sender.name, avatarColor: m.sender.avatarColor },
@@ -148,7 +167,7 @@ function legacyMessage(m: DbMessage) {
     username: m.sender.name,
     color: m.sender.avatarColor,
     avatar: avatarOf(m.sender.name),
-    text: m.text,
+    text: m.type === 'voice' ? '🎙️ رسالة صوتية' : m.text,
     time: hhmm(m.createdAt),
   }
 }
@@ -163,6 +182,11 @@ async function participantIds(conversationId: string): Promise<string[]> {
     select: { userId: true },
   })
   return rows.map((r) => r.userId)
+}
+
+/** Emit to a user's personal room (no-op if offline). */
+function emitToUser(userId: string, event: string, payload: unknown): void {
+  if (userSockets.has(userId)) io.to(`user:${userId}`).emit(event, payload)
 }
 
 /**
@@ -210,12 +234,142 @@ function emitToWebInRoom(conversationId: string, event: string, payload: unknown
   }
 }
 
+/** Join every live socket of the given users to the conversation room. */
+function joinSocketsToConv(userIds: string[], conversationId: string): void {
+  for (const uid of userIds) {
+    const set = userSockets.get(uid)
+    if (!set) continue
+    for (const sid of set) io.sockets.sockets.get(sid)?.join(`conv:${conversationId}`)
+  }
+}
+
 async function isParticipant(conversationId: string, userId: string): Promise<boolean> {
   const p = await prisma.conversationParticipant.findFirst({
     where: { conversationId, userId },
     select: { id: true },
   })
   return !!p
+}
+
+/** Private-only: delivery receipts to online participants of a conversation. */
+async function sendDeliveryReceipts(conversationId: string, senderId: string): Promise<void> {
+  const conv = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { type: true },
+  })
+  if (conv?.type !== 'private') return
+  const ids = await participantIds(conversationId)
+  const at = new Date().toISOString()
+  for (const o of ids) {
+    if (o === senderId) continue
+    if (userSockets.has(o)) {
+      emitToParticipants(ids, 'messages_delivered', { conversationId, userId: o, at }, o)
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Group summaries (shape matches GET /api/conversations for groups + members)
+// ---------------------------------------------------------------------------
+type MemberSummary = { id: string; name: string; avatarColor: string; phone: string }
+
+async function loadMembers(conversationId: string): Promise<MemberSummary[]> {
+  const rows = await prisma.conversationParticipant.findMany({
+    where: { conversationId },
+    orderBy: { joinedAt: 'asc' },
+    select: { user: { select: { id: true, name: true, avatarColor: true, phone: true } } },
+  })
+  return rows.map((r) => ({
+    id: r.user.id,
+    name: r.user.name,
+    avatarColor: r.user.avatarColor,
+    phone: r.user.phone,
+  }))
+}
+
+const EPOCH = new Date(0)
+
+async function loadGroupSummary(conversationId: string, forUserId: string) {
+  const conv = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    include: {
+      participants: { select: { userId: true, lastReadAt: true } },
+      messages: {
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 1,
+        include: { sender: { select: { name: true } } },
+      },
+    },
+  })
+  if (!conv || conv.type !== 'group') return null
+  const mine = conv.participants.find((p) => p.userId === forUserId)
+  if (!mine) return null
+  const lastRow = conv.messages[0] ?? null
+  const unreadCount = await prisma.message.count({
+    where: {
+      conversationId,
+      senderId: { not: forUserId },
+      createdAt: { gt: mine.lastReadAt ?? EPOCH },
+    },
+  })
+  const members = await loadMembers(conversationId)
+  return {
+    id: conv.id,
+    type: 'group',
+    name: conv.name,
+    creatorId: conv.creatorId,
+    unreadCount,
+    myLastReadAt: (mine.lastReadAt ?? null)?.toISOString() ?? null,
+    members,
+    ...(lastRow
+      ? {
+          lastMessage: {
+            id: lastRow.id,
+            text: lastRow.text,
+            createdAt: lastRow.createdAt.toISOString(),
+            senderId: lastRow.senderId,
+            senderName: lastRow.sender.name,
+            type: lastRow.type,
+            mediaUrl: lastRow.mediaUrl,
+            durationMs: lastRow.durationMs,
+          },
+        }
+      : {}),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Call signaling state (1:1 WebRTC — audio or video)
+// ---------------------------------------------------------------------------
+type CallKind = 'audio' | 'video'
+interface CallInfo {
+  id: string
+  callerId: string
+  calleeId: string
+  kind: CallKind
+  state: 'ringing' | 'connecting' | 'active'
+  /** السوكيت الذي قبل المكالمة — يُستخدم لعزل إشارات أجهزة أخرى لنفس الحساب */
+  acceptSocketId: string | null
+  ringTimer: ReturnType<typeof setTimeout> | null
+  createdAt: Date
+}
+
+const calls = new Map<string, CallInfo>()
+const callByUser = new Map<string, string>() // userId -> callId (both parties)
+const RING_TIMEOUT_MS = 45000
+
+function cleanupCall(callId: string): void {
+  const c = calls.get(callId)
+  if (!c) return
+  if (c.ringTimer) clearTimeout(c.ringTimer)
+  calls.delete(callId)
+  if (callByUser.get(c.callerId) === callId) callByUser.delete(c.callerId)
+  if (callByUser.get(c.calleeId) === callId) callByUser.delete(c.calleeId)
+}
+
+function getCall(callId: string): CallInfo | null {
+  const c = calls.get(callId)
+  return c ?? null
 }
 
 // ---------------------------------------------------------------------------
@@ -251,10 +405,6 @@ async function handleAuth(socket: Socket, data: any): Promise<void> {
       select: { conversationId: true, conversation: { select: { type: true } } },
     })
     for (const c of convs) socket.join(`conv:${c.conversationId}`)
-
-    // defensive: always join the public room so live legacy events reach him
-    const pub = await ensurePublicRoom()
-    socket.join(`conv:${pub.id}`)
 
     webSockets.set(socket.id, {
       kind: 'web',
@@ -367,7 +517,7 @@ async function handleLegacyLogin(socket: Socket, data: any): Promise<void> {
         username: m.sender.name,
         color: m.sender.avatarColor,
         avatar: avatarOf(m.sender.name),
-        text: m.text,
+        text: m.type === 'voice' ? '🎙️ رسالة صوتية' : m.text,
         time: hhmm(m.createdAt),
       })),
     })
@@ -476,10 +626,6 @@ async function handleSendMessage(socket: Socket, data: any): Promise<void> {
       )
       return
     }
-    const conv = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-      select: { type: true },
-    })
     const m = await prisma.message.create({
       data: {
         conversationId,
@@ -494,19 +640,528 @@ async function handleSendMessage(socket: Socket, data: any): Promise<void> {
     await broadcastNewMessage(conversationId, m as unknown as DbMessage)
 
     // private only: delivery receipts for online participants
-    if (conv?.type === 'private') {
-      const ids = await participantIds(conversationId)
-      const at = new Date().toISOString()
-      for (const o of ids) {
-        if (o === web.userId) continue
-        if (userSockets.has(o)) {
-          emitToParticipants(ids, 'messages_delivered', { conversationId, userId: o, at }, o)
-        }
-      }
-    }
+    await sendDeliveryReceipts(conversationId, web.userId)
   } catch (e) {
     console.error('[chat-service] send_message error:', e)
   }
+}
+
+// ---------------------------------------------------------------------------
+// Voice messages — send_voice {conversationId, clientId, durationMs, mime,
+// audioBase64} → server writes file to VOICE_DIR, stores Message type='voice'
+// with mediaUrl `/api/media/voice/<file>` and broadcasts like a normal message.
+// ---------------------------------------------------------------------------
+function voiceExt(mime: string): string {
+  const m = (mime || '').toLowerCase()
+  if (m.includes('webm')) return 'webm'
+  if (m.includes('mp4') || m.includes('m4a')) return 'mp4'
+  if (m.includes('ogg')) return 'ogg'
+  if (m.includes('aac')) return 'aac'
+  if (m.includes('wav')) return 'wav'
+  if (m.includes('opus')) return 'opus'
+  return 'webm'
+}
+
+function handleSendVoice(socket: Socket, data: any, ack?: unknown): void {
+  const respond = (r: Record<string, unknown>) => {
+    if (typeof ack === 'function') {
+      try {
+        ;(ack as (x: unknown) => void)(r)
+      } catch {}
+    }
+  }
+  const web = webSockets.get(socket.id)
+  if (!web) return respond({ ok: false, error: 'UNAUTHORIZED' })
+
+  void (async () => {
+    try {
+      const conversationId = String(data?.conversationId ?? '')
+      const b64 = typeof data?.audioBase64 === 'string' ? data.audioBase64 : ''
+      if (!conversationId || !b64) return respond({ ok: false, error: 'BAD_PAYLOAD' })
+      // base64 inflates by 4/3 → reject early before decoding
+      if (b64.length > Math.ceil(MAX_VOICE_BYTES * 1.4)) return respond({ ok: false, error: 'TOO_LARGE' })
+      if (!(await isParticipant(conversationId, web.userId))) {
+        return respond({ ok: false, error: 'FORBIDDEN' })
+      }
+
+      const durationMs = Math.max(0, Math.min(600000, Math.round(Number(data?.durationMs ?? 0)) || 0))
+      const mime = String(data?.mime ?? 'audio/webm').slice(0, 100)
+      const clientId = typeof data?.clientId === 'string' ? data.clientId.slice(0, 64) : null
+
+      const buf = Buffer.from(b64, 'base64')
+      if (buf.length === 0 || buf.length > MAX_VOICE_BYTES) return respond({ ok: false, error: 'TOO_LARGE' })
+
+      await mkdir(VOICE_DIR, { recursive: true })
+      const filename = `${randomUUID()}.${voiceExt(mime)}`
+      await writeFile(path.join(VOICE_DIR, filename), buf)
+
+      const m = await prisma.message.create({
+        data: {
+          conversationId,
+          senderId: web.userId,
+          type: 'voice',
+          text: '',
+          mediaUrl: `/api/media/voice/${filename}`,
+          durationMs,
+          clientId,
+        },
+        include: { sender: { select: { id: true, name: true, avatarColor: true } } },
+      })
+      await broadcastNewMessage(conversationId, m as unknown as DbMessage)
+      await sendDeliveryReceipts(conversationId, web.userId)
+
+      respond({ ok: true, message: officialMessage(m as unknown as DbMessage) })
+      console.log(
+        `[chat-service] voice message from ${web.name} (${Math.round(buf.length / 1024)}KB, ${durationMs}ms)`
+      )
+    } catch (e) {
+      console.error('[chat-service] send_voice error:', e)
+      respond({ ok: false, error: 'SERVER_ERROR' })
+    }
+  })()
+}
+
+// ---------------------------------------------------------------------------
+// Groups — create_group / add_members / leave_group (all with acks).
+// Members are chosen by the group creator from real (non-guest) users.
+// System messages document every change and are broadcast as new_message.
+// ---------------------------------------------------------------------------
+function handleCreateGroup(socket: Socket, data: any, ack?: unknown): void {
+  const respond = (r: Record<string, unknown>) => {
+    if (typeof ack === 'function') {
+      try {
+        ;(ack as (x: unknown) => void)(r)
+      } catch {}
+    }
+  }
+  const web = webSockets.get(socket.id)
+  if (!web) return respond({ ok: false, error: 'UNAUTHORIZED' })
+
+  void (async () => {
+    try {
+      const name = String(data?.name ?? '').trim().slice(0, 60)
+      if (!name) return respond({ ok: false, error: 'NAME_REQUIRED' })
+
+      const rawIds: string[] = Array.isArray(data?.memberIds)
+        ? data.memberIds.map((x: unknown) => String(x ?? '').trim()).filter(Boolean)
+        : []
+      const uniqueIds = [...new Set(rawIds)].filter((id) => id !== web.userId).slice(0, 100)
+      if (uniqueIds.length === 0) return respond({ ok: false, error: 'MEMBERS_REQUIRED' })
+
+      const members = await prisma.user.findMany({
+        where: { id: { in: uniqueIds }, isGuest: false },
+        select: { id: true },
+      })
+      if (members.length === 0) return respond({ ok: false, error: 'MEMBERS_REQUIRED' })
+
+      const conv = await prisma.conversation.create({
+        data: {
+          type: 'group',
+          name,
+          creatorId: web.userId,
+          participants: {
+            create: [{ userId: web.userId }, ...members.map((u) => ({ userId: u.id }))],
+          },
+        },
+        select: { id: true },
+      })
+
+      const allIds = [web.userId, ...members.map((u) => u.id)]
+      joinSocketsToConv(allIds, conv.id)
+
+      const sys = await prisma.message.create({
+        data: {
+          conversationId: conv.id,
+          senderId: web.userId,
+          type: 'system',
+          text: `${web.name} أنشأ المجموعة «${name}»`,
+        },
+        include: { sender: { select: { id: true, name: true, avatarColor: true } } },
+      })
+      await broadcastNewMessage(conv.id, sys as unknown as DbMessage)
+
+      for (const uid of allIds) {
+        const summary = await loadGroupSummary(conv.id, uid)
+        if (summary) emitToUser(uid, 'group_created', { conversation: summary })
+      }
+
+      const mySummary = await loadGroupSummary(conv.id, web.userId)
+      respond({ ok: true, conversation: mySummary })
+      console.log(`[chat-service] group created: «${name}» by ${web.name} (${members.length} members)`)
+    } catch (e) {
+      console.error('[chat-service] create_group error:', e)
+      respond({ ok: false, error: 'SERVER_ERROR' })
+    }
+  })()
+}
+
+function handleAddMembers(socket: Socket, data: any, ack?: unknown): void {
+  const respond = (r: Record<string, unknown>) => {
+    if (typeof ack === 'function') {
+      try {
+        ;(ack as (x: unknown) => void)(r)
+      } catch {}
+    }
+  }
+  const web = webSockets.get(socket.id)
+  if (!web) return respond({ ok: false, error: 'UNAUTHORIZED' })
+
+  void (async () => {
+    try {
+      const conversationId = String(data?.conversationId ?? '')
+      if (!conversationId) return respond({ ok: false, error: 'BAD_PAYLOAD' })
+      if (!(await isParticipant(conversationId, web.userId))) {
+        return respond({ ok: false, error: 'FORBIDDEN' })
+      }
+      const conv = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { type: true },
+      })
+      if (!conv || conv.type !== 'group') return respond({ ok: false, error: 'NOT_FOUND' })
+
+      const rawIds: string[] = Array.isArray(data?.memberIds)
+        ? data.memberIds.map((x: unknown) => String(x ?? '').trim()).filter(Boolean)
+        : []
+      const uniqueIds = [...new Set(rawIds)].slice(0, 100)
+      if (uniqueIds.length === 0) return respond({ ok: false, error: 'MEMBERS_REQUIRED' })
+
+      const existing = await prisma.conversationParticipant.findMany({
+        where: { conversationId },
+        select: { userId: true },
+      })
+      const existingSet = new Set(existing.map((e) => e.userId))
+
+      const candidates = await prisma.user.findMany({
+        where: { id: { in: uniqueIds }, isGuest: false },
+        select: { id: true, name: true },
+      })
+      const toAdd = candidates.filter((u) => !existingSet.has(u.id))
+      if (toAdd.length === 0) return respond({ ok: false, error: 'NO_NEW_MEMBERS' })
+
+      await prisma.conversationParticipant.createMany({
+        data: toAdd.map((u) => ({ conversationId, userId: u.id })),
+      })
+      joinSocketsToConv(toAdd.map((u) => u.id), conversationId)
+
+      const sys = await prisma.message.create({
+        data: {
+          conversationId,
+          senderId: web.userId,
+          type: 'system',
+          text: `${web.name} أضاف ${toAdd.map((u) => u.name).join('، ')}`,
+        },
+        include: { sender: { select: { id: true, name: true, avatarColor: true } } },
+      })
+
+      // first: full summary to the newly added (their client learns about the group)
+      for (const u of toAdd) {
+        const summary = await loadGroupSummary(conversationId, u.id)
+        if (summary) emitToUser(u.id, 'group_created', { conversation: summary })
+      }
+      // then: the system message to everyone (preview + open chat append)
+      await broadcastNewMessage(conversationId, sys as unknown as DbMessage)
+      // member list update to existing members
+      const members = await loadMembers(conversationId)
+      emitToParticipants(
+        existing.map((e) => e.userId),
+        'group_members_changed',
+        { conversationId, members, added: toAdd.map((u) => ({ id: u.id, name: u.name })) }
+      )
+
+      respond({ ok: true, added: toAdd.map((u) => ({ id: u.id, name: u.name })) })
+      console.log(`[chat-service] group ${conversationId}: +${toAdd.length} member(s) by ${web.name}`)
+    } catch (e) {
+      console.error('[chat-service] add_members error:', e)
+      respond({ ok: false, error: 'SERVER_ERROR' })
+    }
+  })()
+}
+
+function handleLeaveGroup(socket: Socket, data: any, ack?: unknown): void {
+  const respond = (r: Record<string, unknown>) => {
+    if (typeof ack === 'function') {
+      try {
+        ;(ack as (x: unknown) => void)(r)
+      } catch {}
+    }
+  }
+  const web = webSockets.get(socket.id)
+  if (!web) return respond({ ok: false, error: 'UNAUTHORIZED' })
+
+  void (async () => {
+    try {
+      const conversationId = String(data?.conversationId ?? '')
+      if (!conversationId) return respond({ ok: false, error: 'BAD_PAYLOAD' })
+
+      const p = await prisma.conversationParticipant.findFirst({
+        where: { conversationId, userId: web.userId },
+        select: { id: true },
+      })
+      if (!p) return respond({ ok: false, error: 'NOT_MEMBER' })
+      const conv = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { type: true },
+      })
+      if (!conv || conv.type !== 'group') return respond({ ok: false, error: 'NOT_FOUND' })
+
+      await prisma.conversationParticipant.delete({ where: { id: p.id } })
+
+      const sys = await prisma.message.create({
+        data: {
+          conversationId,
+          senderId: web.userId,
+          type: 'system',
+          text: `${web.name} غادر المجموعة`,
+        },
+        include: { sender: { select: { id: true, name: true, avatarColor: true } } },
+      })
+
+      const remaining = await participantIds(conversationId)
+      // everyone except the leaver
+      emitToParticipants(remaining, 'new_message', { message: officialMessage(sys as unknown as DbMessage) }, web.userId)
+      emitToParticipants(
+        remaining,
+        'group_members_changed',
+        {
+          conversationId,
+          members: await loadMembers(conversationId),
+          left: { id: web.userId, name: web.name },
+        },
+        web.userId
+      )
+      // the leaver removes the conversation from his list
+      emitToUser(web.userId, 'group_left', { conversationId })
+
+      // empty group → delete conversation (messages cascade)
+      if (remaining.length === 0) {
+        await prisma.conversation.delete({ where: { id: conversationId } }).catch(() => {})
+      }
+
+      respond({ ok: true })
+      console.log(`[chat-service] group ${conversationId}: ${web.name} left`)
+    } catch (e) {
+      console.error('[chat-service] leave_group error:', e)
+      respond({ ok: false, error: 'SERVER_ERROR' })
+    }
+  })()
+}
+
+// ---------------------------------------------------------------------------
+// WebRTC call signaling (1:1)
+//   caller → server: call_invite{to,kind}(ack) · call_cancel{callId}
+//                    call_offer{callId,sdp} · call_ice{callId,candidate}
+//                    call_end{callId}
+//   callee → server: call_accept{callId} · call_reject{callId}
+//                    call_answer{callId,sdp} · call_ice{callId,candidate}
+//                    call_end{callId}
+//   server → caller: call_accepted · call_rejected{reason} · call_ended{reason}
+//                    call_ice · call_answer{sdp}
+//   server → callee: call_incoming{callId,from,kind} · call_cancelled{reason}
+//                    call_offer{sdp} · call_ended{reason} · call_ice
+// ---------------------------------------------------------------------------
+function handleCallInvite(socket: Socket, data: any, ack?: unknown): void {
+  const respond = (r: Record<string, unknown>) => {
+    if (typeof ack === 'function') {
+      try {
+        ;(ack as (x: unknown) => void)(r)
+      } catch {}
+    }
+  }
+  const web = webSockets.get(socket.id)
+  if (!web) return respond({ ok: false, error: 'UNAUTHORIZED' })
+
+  const to = String(data?.to ?? '').trim()
+  const kind: CallKind = data?.kind === 'video' ? 'video' : 'audio'
+  if (!to || to === web.userId) return respond({ ok: false, error: 'BAD_TARGET' })
+  if (callByUser.has(web.userId)) return respond({ ok: false, error: 'IN_CALL' })
+
+  void (async () => {
+    try {
+      const target = await prisma.user.findUnique({
+        where: { id: to },
+        select: { id: true, name: true, isGuest: true },
+      })
+      if (!target || target.isGuest) return respond({ ok: false, error: 'UNAVAILABLE' })
+      if (!userSockets.has(to)) return respond({ ok: false, error: 'OFFLINE' })
+      if (callByUser.has(to)) return respond({ ok: false, error: 'BUSY' })
+
+      const callId = randomUUID()
+      const info: CallInfo = {
+        id: callId,
+        callerId: web.userId,
+        calleeId: to,
+        kind,
+        state: 'ringing',
+        acceptSocketId: null,
+        ringTimer: null,
+        createdAt: new Date(),
+      }
+      info.ringTimer = setTimeout(() => {
+        const c = calls.get(callId)
+        if (!c || c.state !== 'ringing') return
+        emitToUser(c.callerId, 'call_ended', { callId, reason: 'no-answer' })
+        emitToUser(c.calleeId, 'call_cancelled', { callId, reason: 'timeout' })
+        cleanupCall(callId)
+      }, RING_TIMEOUT_MS)
+      calls.set(callId, info)
+      callByUser.set(web.userId, callId)
+      callByUser.set(to, callId)
+
+      io.to(`user:${to}`).emit('call_incoming', {
+        callId,
+        from: { id: web.userId, name: web.name, avatarColor: web.avatarColor },
+        kind,
+      })
+      respond({ ok: true, callId })
+      console.log(`[chat-service] call ringing: ${web.name} → ${target.name} (${kind})`)
+    } catch (e) {
+      console.error('[chat-service] call_invite error:', e)
+      respond({ ok: false, error: 'SERVER_ERROR' })
+    }
+  })()
+}
+
+function handleCallCancel(socket: Socket, data: any, ack?: unknown): void {
+  const respond = (r: Record<string, unknown>) => {
+    if (typeof ack === 'function') {
+      try {
+        ;(ack as (x: unknown) => void)(r)
+      } catch {}
+    }
+  }
+  const web = webSockets.get(socket.id)
+  if (!web) return respond({ ok: false, error: 'UNAUTHORIZED' })
+  const callId = String(data?.callId ?? '')
+  const c = getCall(callId)
+  if (!c || c.callerId !== web.userId) return respond({ ok: false, error: 'NOT_FOUND' })
+  if (c.state !== 'ringing') return respond({ ok: false, error: 'NOT_RINGING' })
+  cleanupCall(callId)
+  emitToUser(c.calleeId, 'call_cancelled', { callId, reason: 'cancel' })
+  respond({ ok: true })
+  console.log(`[chat-service] call cancelled by caller (${callId.slice(0, 8)})`)
+}
+
+function handleCallAccept(socket: Socket, data: any, ack?: unknown): void {
+  const respond = (r: Record<string, unknown>) => {
+    if (typeof ack === 'function') {
+      try {
+        ;(ack as (x: unknown) => void)(r)
+      } catch {}
+    }
+  }
+  const web = webSockets.get(socket.id)
+  if (!web) return respond({ ok: false, error: 'UNAUTHORIZED' })
+  const callId = String(data?.callId ?? '')
+  const c = getCall(callId)
+  if (!c || c.calleeId !== web.userId) return respond({ ok: false, error: 'NOT_FOUND' })
+  if (c.state !== 'ringing') return respond({ ok: false, error: 'NOT_RINGING' })
+  if (c.ringTimer) {
+    clearTimeout(c.ringTimer)
+    c.ringTimer = null
+  }
+  c.state = 'connecting'
+  c.acceptSocketId = socket.id
+  // أوقف الرنين على أجهزة أخرى لنفس الحساب (نفس المستخدم من متصفح/جهاز ثانٍ)
+  socket.to(`user:${c.calleeId}`).emit('call_cancelled', { callId, reason: 'answered-elsewhere' })
+  emitToUser(c.callerId, 'call_accepted', { callId, kind: c.kind })
+  respond({ ok: true })
+  console.log(`[chat-service] call accepted (${callId.slice(0, 8)})`)
+}
+
+function handleCallReject(socket: Socket, data: any, ack?: unknown): void {
+  const respond = (r: Record<string, unknown>) => {
+    if (typeof ack === 'function') {
+      try {
+        ;(ack as (x: unknown) => void)(r)
+      } catch {}
+    }
+  }
+  const web = webSockets.get(socket.id)
+  if (!web) return respond({ ok: false, error: 'UNAUTHORIZED' })
+  const callId = String(data?.callId ?? '')
+  const c = getCall(callId)
+  if (!c || c.calleeId !== web.userId) return respond({ ok: false, error: 'NOT_FOUND' })
+  // حماية تعدد الأجهزة: بعد قبول جهازٍ ما للاتصال، رفض جهاز آخر لا يعني شيئاً
+  if (c.state !== 'ringing') return respond({ ok: false, error: 'NOT_RINGING' })
+  cleanupCall(callId)
+  emitToUser(c.callerId, 'call_rejected', { callId, reason: 'declined' })
+  respond({ ok: true })
+  console.log(`[chat-service] call declined (${callId.slice(0, 8)})`)
+}
+
+function handleCallOffer(socket: Socket, data: any, ack?: unknown): void {
+  const web = webSockets.get(socket.id)
+  if (!web) return
+  const callId = String(data?.callId ?? '')
+  const sdp = typeof data?.sdp === 'string' ? data.sdp : ''
+  if (!callId || !sdp) return
+  const c = getCall(callId)
+  if (!c || c.callerId !== web.userId) return
+  emitToUser(c.calleeId, 'call_offer', { callId, sdp })
+  if (typeof ack === 'function') {
+    try {
+      ;(ack as (x: unknown) => void)({ ok: true })
+    } catch {}
+  }
+}
+
+function handleCallAnswer(socket: Socket, data: any, ack?: unknown): void {
+  const web = webSockets.get(socket.id)
+  if (!web) return
+  const callId = String(data?.callId ?? '')
+  const sdp = typeof data?.sdp === 'string' ? data.sdp : ''
+  if (!callId || !sdp) return
+  const c = getCall(callId)
+  if (!c || c.calleeId !== web.userId) return
+  // حصر الـ SDP بجهاز القبول فقط (حماية تعدد الأجهزة لنفس الحساب)
+  if (c.acceptSocketId && socket.id !== c.acceptSocketId) return
+  c.state = 'active'
+  emitToUser(c.callerId, 'call_answer', { callId, sdp })
+  if (typeof ack === 'function') {
+    try {
+      ;(ack as (x: unknown) => void)({ ok: true })
+    } catch {}
+  }
+}
+
+function handleCallIce(socket: Socket, data: any, ack?: unknown): void {
+  const web = webSockets.get(socket.id)
+  if (!web) return
+  const callId = String(data?.callId ?? '')
+  if (!callId) return
+  const c = getCall(callId)
+  if (!c || (c.callerId !== web.userId && c.calleeId !== web.userId)) return
+  // من جهة المستقبِل: حصر ICE بجهاز القبول فقط
+  if (c.calleeId === web.userId && c.acceptSocketId && socket.id !== c.acceptSocketId) return
+  const other = c.callerId === web.userId ? c.calleeId : c.callerId
+  emitToUser(other, 'call_ice', { callId, candidate: data?.candidate ?? null })
+  if (typeof ack === 'function') {
+    try {
+      ;(ack as (x: unknown) => void)({ ok: true })
+    } catch {}
+  }
+}
+
+function handleCallEnd(socket: Socket, data: any, ack?: unknown): void {
+  const respond = (r: Record<string, unknown>) => {
+    if (typeof ack === 'function') {
+      try {
+        ;(ack as (x: unknown) => void)(r)
+      } catch {}
+    }
+  }
+  const web = webSockets.get(socket.id)
+  if (!web) return respond({ ok: false, error: 'UNAUTHORIZED' })
+  const callId = String(data?.callId ?? '')
+  const c = getCall(callId)
+  if (!c || (c.callerId !== web.userId && c.calleeId !== web.userId)) {
+    return respond({ ok: false, error: 'NOT_FOUND' })
+  }
+  const other = c.callerId === web.userId ? c.calleeId : c.callerId
+  cleanupCall(callId)
+  emitToUser(other, 'call_ended', { callId, reason: 'hangup' })
+  respond({ ok: true })
+  console.log(`[chat-service] call ended (${callId.slice(0, 8)})`)
 }
 
 // ---- web client: read {conversationId} ----
@@ -569,6 +1224,18 @@ async function handleDisconnect(socket: Socket): Promise<void> {
     const web = webSockets.get(socket.id)
     if (web) {
       detachSocket(socket.id)
+
+      // abort any active/ringing call of this user
+      const callId = callByUser.get(web.userId)
+      if (callId) {
+        const c = getCall(callId)
+        if (c) {
+          const other = c.callerId === web.userId ? c.calleeId : c.callerId
+          cleanupCall(callId)
+          emitToUser(other, 'call_ended', { callId, reason: 'disconnected' })
+        }
+      }
+
       if (!userSockets.has(web.userId)) {
         // last socket of this real user → lastSeen + offline presence
         const now = new Date()
@@ -620,6 +1287,24 @@ io.on('connection', (socket: Socket) => {
   socket.on('read', (data: unknown) => void handleRead(socket, data))
   socket.on('sync_read', (data: unknown) => void handleSyncRead(socket, data))
 
+  // voice messages
+  socket.on('send_voice', (data: unknown, ack?: unknown) => handleSendVoice(socket, data, ack))
+
+  // groups
+  socket.on('create_group', (data: unknown, ack?: unknown) => handleCreateGroup(socket, data, ack))
+  socket.on('add_members', (data: unknown, ack?: unknown) => handleAddMembers(socket, data, ack))
+  socket.on('leave_group', (data: unknown, ack?: unknown) => handleLeaveGroup(socket, data, ack))
+
+  // calls (WebRTC signaling)
+  socket.on('call_invite', (data: unknown, ack?: unknown) => handleCallInvite(socket, data, ack))
+  socket.on('call_cancel', (data: unknown, ack?: unknown) => handleCallCancel(socket, data, ack))
+  socket.on('call_accept', (data: unknown, ack?: unknown) => handleCallAccept(socket, data, ack))
+  socket.on('call_reject', (data: unknown, ack?: unknown) => handleCallReject(socket, data, ack))
+  socket.on('call_offer', (data: unknown, ack?: unknown) => handleCallOffer(socket, data, ack))
+  socket.on('call_answer', (data: unknown, ack?: unknown) => handleCallAnswer(socket, data, ack))
+  socket.on('call_ice', (data: unknown, ack?: unknown) => handleCallIce(socket, data, ack))
+  socket.on('call_end', (data: unknown, ack?: unknown) => handleCallEnd(socket, data, ack))
+
   socket.on('disconnect', (reason: string) => {
     void handleDisconnect(socket)
   })
@@ -641,13 +1326,18 @@ const PORT = Number(process.env.CHAT_PORT || 3003)
 async function main(): Promise<void> {
   await initSqlitePragmas()
   try {
+    await mkdir(VOICE_DIR, { recursive: true })
+  } catch (e) {
+    console.error('[chat-service] voice dir creation failed:', e)
+  }
+  try {
     const pub = await ensurePublicRoom()
-    console.log(`[chat-service] public room ready (${pub.id})`)
+    console.log(`[chat-service] legacy public room ready (${pub.id})`)
   } catch (e) {
     console.error('[chat-service] ensurePublicRoom failed at boot (will retry on demand):', e)
   }
   httpServer.listen(PORT, () => {
-    console.log(`[chat-service] Socket.IO chat service listening on :${PORT} (path '/' — serves web + legacy APK)`)
+    console.log(`[chat-service] Socket.IO chat service listening on :${PORT} (path '/' — web + legacy APK + voice + calls + groups)`)
   })
 }
 
