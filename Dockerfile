@@ -6,8 +6,11 @@
 # الحل: النسخة النهائية تُبنى محلياً وتوضع في prebuilt/ ثم تُرفع
 # مع المستودع — فيصبح بناء المنصة مجرد نسخ ملفات (أقل من دقيقتين).
 #
+# لماذا وكيل Node بدل Caddy؟ Render يمنع تشغيل الثنائيات
+# الخارجية (exec: Operation not permitted) — أما node فمسموح.
+#
 # المنفذ: متغير PORT (Render/HF يضبطانه تلقائياً، افتراضي 7860)
-#   /socket.io/* → خدمة الرسائل (:3003)
+#   /socket.io/* → خدمة الرسائل (:3003) + WebSocket
 #   الباقي      → واجهة Next.js (:3000)
 # ============================================================
 FROM node:22-slim
@@ -17,7 +20,6 @@ RUN apt-get update \
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=7860
-COPY --from=caddy:2 /usr/bin/caddy /usr/local/bin/caddy
 
 # الواجهة المبنية مسبقاً (server.js + node_modules + .next + public)
 COPY prebuilt/next ./
@@ -25,7 +27,8 @@ COPY prebuilt/next ./
 COPY prebuilt/chat-service ./chat-service
 # قاعدة بيانات أولية نظيفة بالهيكل الصحيح
 COPY prebuilt/seed /seed
-COPY Caddyfile.docker /etc/caddy/Caddyfile
+# وكيل Node.js يوزع الطلبات (بديل Caddy)
+COPY docker/proxy.js /proxy.js
 COPY docker/start.sh /start.sh
 RUN chmod +x /start.sh && mkdir -p /app/db/voice
 

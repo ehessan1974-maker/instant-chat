@@ -26,7 +26,6 @@ echo "[start] تشغيل واجهة Next.js على 3000..."
 cd /app
 PORT=3000 HOSTNAME=127.0.0.1 node server.js &
 
-# 3) وكيل Caddy على المنفذ الخارجي (يعمل في المقدمة)
-echo "[start] تشغيل وكيل Caddy على المنفذ ${PORT:-7860}..."
-chmod +x /usr/local/bin/caddy 2>/dev/null || true
-exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+# 3) وكيل Node.js على المنفذ الخارجي (يعمل في المقدمة)
+echo "[start] تشغيل وكيل Node على المنفذ ${PORT:-7860}..."
+exec node /app/proxy.js
