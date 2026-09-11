@@ -1,0 +1,15 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/auth/logout/route": "/api/auth/logout",
+  "/api/auth/me/route": "/api/auth/me",
+  "/api/auth/request-otp/route": "/api/auth/request-otp",
+  "/api/auth/verify/route": "/api/auth/verify",
+  "/api/conversations/[id]/messages/route": "/api/conversations/[id]/messages",
+  "/api/conversations/route": "/api/conversations",
+  "/api/media/voice/[name]/route": "/api/media/voice/[name]",
+  "/api/route": "/api",
+  "/api/users/route": "/api/users",
+  "/manifest.webmanifest/route": "/manifest.webmanifest",
+  "/page": "/"
+}

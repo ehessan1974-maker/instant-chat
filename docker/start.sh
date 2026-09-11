@@ -7,12 +7,17 @@ set -e
 
 mkdir -p /app/db/voice
 
+# أول تشغيل: نسخ قاعدة بيانات نظيفة بالهيكل الصحيح
+if [ ! -f /app/db/custom.db ]; then
+  cp /seed/custom.db /app/db/custom.db
+fi
+
 export DATABASE_URL="file:/app/db/custom.db"
 export VOICE_DIR="/app/db/voice"
 
 # 1) خدمة الرسائل على 3003
 cd /app/chat-service
-PORT=3003 npx tsx index.ts &
+CHAT_PORT=3003 PORT=3003 ./node_modules/.bin/tsx index.ts &
 
 # 2) واجهة Next.js على 3000
 cd /app

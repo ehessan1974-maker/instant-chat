@@ -1,0 +1,82 @@
+// Instant Chat (WhatsApp-like) schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  phone        String    @unique
+  name         String
+  avatarColor  String    @default("#00a884")
+  about        String    @default("متاح")
+  isGuest      Boolean   @default(false)
+  lastSeen     DateTime?
+  createdAt    DateTime  @default(now())
+  sessions     Session[]
+  participants ConversationParticipant[]
+  messages     Message[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+}
+
+model Conversation {
+  id           String   @id @default(cuid())
+  type         String // 'private' | 'group'
+  name         String? // group display name
+  key          String?  @unique // private: sorted "idA|idB" ; legacy public room: "PUBLIC"
+  creatorId    String? // group creator (admin) userId
+  createdAt    DateTime @default(now())
+  participants ConversationParticipant[]
+  messages     Message[]
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt     DateTime?
+  joinedAt       DateTime     @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id])
+  type           String       @default("text") // 'text' | 'voice' | 'system'
+  text           String
+  mediaUrl       String? // voice: /api/media/voice/<file>
+  durationMs     Int? // voice duration in milliseconds
+  clientId       String? // client-generated id for optimistic UI dedup
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}

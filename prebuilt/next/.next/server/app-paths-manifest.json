@@ -1,0 +1,15 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/auth/logout/route": "app/api/auth/logout/route.js",
+  "/api/auth/me/route": "app/api/auth/me/route.js",
+  "/api/auth/request-otp/route": "app/api/auth/request-otp/route.js",
+  "/api/auth/verify/route": "app/api/auth/verify/route.js",
+  "/api/conversations/[id]/messages/route": "app/api/conversations/[id]/messages/route.js",
+  "/api/conversations/route": "app/api/conversations/route.js",
+  "/api/media/voice/[name]/route": "app/api/media/voice/[name]/route.js",
+  "/api/route": "app/api/route.js",
+  "/api/users/route": "app/api/users/route.js",
+  "/manifest.webmanifest/route": "app/manifest.webmanifest/route.js",
+  "/page": "app/page.js"
+}
