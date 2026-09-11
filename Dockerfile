@@ -27,8 +27,8 @@ COPY prebuilt/next ./
 COPY prebuilt/chat-service ./chat-service
 # قاعدة بيانات أولية نظيفة بالهيكل الصحيح
 COPY prebuilt/seed /seed
-# وكيل Node.js يوزع الطلبات (بديل Caddy)
-COPY docker/proxy.js /proxy.js
+# وكيل Node.js يوزع الطلبات (بديل Caddy) — إلى /app حيث كل الملفات
+COPY docker/proxy.js /app/proxy.js
 COPY docker/start.sh /start.sh
 RUN chmod +x /start.sh && mkdir -p /app/db/voice
 
