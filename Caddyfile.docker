@@ -1,0 +1,13 @@
+{
+	auto_https off
+}
+
+:{$PORT:7860} {
+	encode gzip zstd
+
+	# خدمة الرسائل الفورية (WebSocket)
+	reverse_proxy /socket.io/* 127.0.0.1:3003
+
+	# واجهة الموقع
+	reverse_proxy 127.0.0.1:3000
+}
