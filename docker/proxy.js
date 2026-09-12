@@ -28,16 +28,12 @@ function isProbe(req) {
   const raw = ((req.url || '/').split('?')[0].toLowerCase().replace(/\/+$/, '')) || '/';
   // HEAD: الفاحصات تستخدمه كثيراً والمتصفحات لا تكاد ترسله
   if (req.method === 'HEAD') return true;
+  // مسارات الصحة الشائعة لأي عميل (التطبيق لا يستخدمها)
+  if (PROBE_PATH.test(raw)) return true;
+  // فاحص معروف (Render/kube/GoogleHC...) على الجذر فقط — جواب فوري
+  // ملاحظة: الزواحف بلا User-Agent (مثل PWABuilder) تُمرر للتطبيق بشكل طبيعي
   const ua = (req.headers['user-agent'] || '').toString();
-  const automated = !ua || PROBE_UA.test(ua);
-  // فاحص آلي على الجذر أو أي مسار صحي → جواب فوري
-  if (automated && (raw === '/' || PROBE_PATH.test(raw))) {
-    return true;
-  }
-  // مسارات صحة شائعة حتى من عملاء عاديين (التطبيق لا يستخدمها)
-  if (PROBE_PATH.test(raw)) {
-    return true;
-  }
+  if (ua && PROBE_UA.test(ua) && raw === '/') return true;
   return false;
 }
 
