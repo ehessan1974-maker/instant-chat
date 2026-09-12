@@ -146,6 +146,7 @@ location / {
 | `SMS_PROVIDER=twilio` | + `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` — **لا يدعم سوريا منذ 9/2025** |
 | `SMS_PROVIDER=vonage` | + `VONAGE_API_KEY`, `VONAGE_API_SECRET`, `VONAGE_FROM` |
 | `SMS_PROVIDER=http` | + `SMS_HTTP_URL` (POST JSON `{to, message}`), `SMS_HTTP_TOKEN` اختياري — يناسب أي مزود يدعم أرقام سوريا |
+| `SMS_PROVIDER=relay` | + `SMS_RELAY_TOKEN` — **بلا تكلفة**: هاتف أندرويد يسحب الطابور ويرسل من باقة رسائلك (السكربت الجاهز: `public/relay-sms.sh` عبر Termux) |
 | `OTP_MESSAGE_TEMPLATE` | اختياري: نص الرسالة مع `{code}` (أبقِه تحت 70 حرفاً) |
 
 مدمجة فيه حمايات تلقائية: دقيقة انتظار بين كل طلبين لنفس الرقم، 8 رموز/ساعة لكل رقم، سقف عام 60/ساعة (يحمي رصيد المزود)، و10 محاولات دخول خاطئة/15 دقيقة (يمنع تخمين الرمز).

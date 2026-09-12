@@ -94,6 +94,18 @@
       "namedRegex": "^/api/conversations(?:/)?$"
     },
     {
+      "page": "/api/sms/relay/confirm",
+      "regex": "^/api/sms/relay/confirm(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/sms/relay/confirm(?:/)?$"
+    },
+    {
+      "page": "/api/sms/relay/pending",
+      "regex": "^/api/sms/relay/pending(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/sms/relay/pending(?:/)?$"
+    },
+    {
       "page": "/api/users",
       "regex": "^/api/users(?:/)?$",
       "routeKeys": {},

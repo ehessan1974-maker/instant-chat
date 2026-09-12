@@ -9,6 +9,8 @@
   "/api/conversations/route": "/api/conversations",
   "/api/media/voice/[name]/route": "/api/media/voice/[name]",
   "/api/route": "/api",
+  "/api/sms/relay/confirm/route": "/api/sms/relay/confirm",
+  "/api/sms/relay/pending/route": "/api/sms/relay/pending",
   "/api/users/route": "/api/users",
   "/manifest.webmanifest/route": "/manifest.webmanifest",
   "/page": "/"

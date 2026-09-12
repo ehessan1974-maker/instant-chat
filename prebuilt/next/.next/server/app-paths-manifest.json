@@ -9,6 +9,8 @@
   "/api/conversations/route": "app/api/conversations/route.js",
   "/api/media/voice/[name]/route": "app/api/media/voice/[name]/route.js",
   "/api/route": "app/api/route.js",
+  "/api/sms/relay/confirm/route": "app/api/sms/relay/confirm/route.js",
+  "/api/sms/relay/pending/route": "app/api/sms/relay/pending/route.js",
   "/api/users/route": "app/api/users/route.js",
   "/manifest.webmanifest/route": "app/manifest.webmanifest/route.js",
   "/page": "app/page.js"

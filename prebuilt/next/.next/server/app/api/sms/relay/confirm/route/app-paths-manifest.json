@@ -1,0 +1,3 @@
+{
+  "/api/sms/relay/confirm/route": "app/api/sms/relay/confirm/route.js"
+}

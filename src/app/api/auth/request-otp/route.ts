@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { normalizePhone, readJsonRecord } from '@/lib/auth'
-import { isSmsConfigured, sendSms } from '@/lib/sms'
+import { isSmsConfigured, getSmsProvider, sendSms } from '@/lib/sms'
 
 const OTP_TTL_MS = 10 * 60 * 1000 // صلاحية الرمز: 10 دقائق
 const RESEND_COOLDOWN_MS = 60 * 1000 // دقيقة بين كل طلبين لنفس الرقم
@@ -110,6 +110,13 @@ export async function POST(req: Request) {
     if (isSmsConfigured()) {
       const template = process.env.OTP_MESSAGE_TEMPLATE || 'رمز الدخول لمحادثة فورية: {code}'
       const text = template.replace('{code}', code).slice(0, 160)
+
+      // بوابة الموبايل (relay): تُكتب بطابور ينتظر سحبها وإرسالها من هاتف صاحب التطبيق
+      if (getSmsProvider() === 'relay') {
+        await db.smsOutbox.create({ data: { phone, text } })
+        return NextResponse.json({ ok: true, delivered: true, isNew: !existing })
+      }
+
       const result = await sendSms(phone, text)
       if (!result.ok) {
         // لا نفشل العملية إجمالاً؟ — فشل الإرسال يجب أن يمنع الدخول (تحقق حقيقي)

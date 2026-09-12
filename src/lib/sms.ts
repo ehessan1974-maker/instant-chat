@@ -13,6 +13,11 @@
 //   SMS_HTTP_URL        (يستقبل POST بصيغة JSON: { to, message })
 //   SMS_HTTP_TOKEN      (اختياري — يُرسل كـ Authorization: Bearer <token>)
 //
+// بوابة الموبايل (relay) — أرخص خيار: موبايل أندرويد بيرسل من باقتك المجانية:
+//   SMS_PROVIDER=relay  +  SMS_RELAY_TOKEN=<رمز سري>
+//   الموبايل (سطر أوامر Termux) يسحب /api/sms/relay/pending ويرسل من الشريحة
+//   ثم يثبت عبر /api/sms/relay/confirm — انظر public/relay-sms.sh
+//
 // تحسين اختياري للرسالة (يجب أن تبقى تحت 70 حرفاً لقطاع SMS واحد):
 //   OTP_MESSAGE_TEMPLATE = "رمز الدخول لمحادثة فورية: {code}"
 
@@ -22,6 +27,11 @@ const SEND_TIMEOUT_MS = 10_000
 
 function activeProvider(): string {
   return (process.env.SMS_PROVIDER || '').trim().toLowerCase()
+}
+
+/** اسم المزود الحالي (twilio | vonage | http | relay | فارغ) */
+export function getSmsProvider(): string {
+  return activeProvider()
 }
 
 /** هل المزود مضبوط بمتغيرات البيئة؟ يحدد الوضع التجريبي مقابل الإرسال الحقيقي */
@@ -41,6 +51,8 @@ export function isSmsConfigured(): boolean {
       )
     case 'http':
       return Boolean(process.env.SMS_HTTP_URL)
+    case 'relay':
+      return Boolean(process.env.SMS_RELAY_TOKEN)
     default:
       return false
   }
