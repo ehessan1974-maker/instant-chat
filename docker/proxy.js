@@ -24,14 +24,14 @@ function isChatRequest(url) {
 }
 
 // هل هذا طلب فحص صحة/نشر؟ نجيب عليه 200 مباشرة دون تمرير
+// ملاحظة مهمة: طلبات HEAD تُمرر للتطبيق بشكل طبيعي — أدوات التحليل
+// (مثل PWABuilder) تتحقق منها وتتوقع text/html حقيقي
 function isProbe(req) {
   const raw = ((req.url || '/').split('?')[0].toLowerCase().replace(/\/+$/, '')) || '/';
-  // HEAD: الفاحصات تستخدمه كثيراً والمتصفحات لا تكاد ترسله
-  if (req.method === 'HEAD') return true;
-  // مسارات الصحة الشائعة لأي عميل (التطبيق لا يستخدمها)
+  // مسارات الصحة الشائعة لأي عميل وأي طريقة (التطبيق لا يستخدمها)
   if (PROBE_PATH.test(raw)) return true;
   // فاحص معروف (Render/kube/GoogleHC...) على الجذر فقط — جواب فوري
-  // ملاحظة: الزواحف بلا User-Agent (مثل PWABuilder) تُمرر للتطبيق بشكل طبيعي
+  // الزواحف بلا User-Agent (مثل PWABuilder) تُمرر للتطبيق بشكل طبيعي
   const ua = (req.headers['user-agent'] || '').toString();
   if (ua && PROBE_UA.test(ua) && raw === '/') return true;
   return false;
