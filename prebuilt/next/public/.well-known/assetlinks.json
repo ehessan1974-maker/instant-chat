@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.render.dashboard.twa",
+        "sha256_cert_fingerprints": ["E7:B8:E2:AF:E1:E7:02:50:41:42:31:F9:64:65:2D:0C:3F:8F:0D:35:6F:35:9A:1A:CB:7F:35:B3:34:C1:8F:04"]
+      }
+    }]
