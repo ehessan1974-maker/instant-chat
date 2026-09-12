@@ -171,6 +171,14 @@ function translateError(code: string, status: number): string {
     case 'INVALID_CODE':
     case 'OTP_INVALID':
       return 'رمز التحقق غير صحيح أو منتهي الصلاحية';
+    case 'OTP_COOLDOWN':
+      return 'انتظر دقيقة ثم اطلب رمزاً جديداً';
+    case 'OTP_RATE_LIMITED':
+      return 'تجاوزت عدد مرات إرسال الرموز المسموحة — حاول لاحقاً';
+    case 'SMS_FAILED':
+      return 'تعذر إرسال الرسالة النصية — تحقق من الرقم وحاول بعد قليل';
+    case 'TOO_MANY_ATTEMPTS':
+      return 'محاولات كثيرة خاطئة — انتظر 15 دقيقة ثم جرّب مجدداً';
     case 'PHONE_REQUIRED':
       return 'يرجى إدخال رقم هاتف صحيح';
     case 'UNAUTHORIZED':
@@ -190,6 +198,8 @@ export interface RequestOtpResult {
   ok?: boolean;
   code?: string;
   isNew?: boolean;
+  /** true = أُرسل الرمز برسالة SMS حقيقية (لا يظهر الرمز في الاستجابة) */
+  delivered?: boolean;
   error?: string;
 }
 

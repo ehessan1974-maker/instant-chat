@@ -1,6 +1,6 @@
 var R=require("../../../../chunks/[turbopack]_runtime.js")("server/app/api/auth/logout/route.js")
-R.c("server/chunks/[root-of-the-server]__205yooy._.js")
-R.c("server/chunks/[root-of-the-server]__0l3yhx4._.js")
-R.c("server/chunks/_next-internal_server_app_api_auth_logout_route_actions_0regwyr.js")
-R.m(83932)
-module.exports=R.m(83932).exports
+R.c("server/chunks/[root-of-the-server]__5f4c8ab9._.js")
+R.c("server/chunks/[root-of-the-server]__dfc033bc._.js")
+R.c("server/chunks/ic-build__next-internal_server_app_api_auth_logout_route_actions_06242224.js")
+R.m(39219)
+module.exports=R.m(39219).exports

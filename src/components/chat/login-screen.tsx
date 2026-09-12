@@ -87,6 +87,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
   const [name, setName] = useState('');
   const [needName, setNeedName] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
+  const [smsSent, setSmsSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -110,6 +111,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
     try {
       const res = await requestOtp(p);
       setDevCode(res.code ?? null);
+      setSmsSent(res.delivered === true);
       setStep('code');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'تعذر إرسال رمز التحقق، حاول مجدداً');
@@ -232,7 +234,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                 </div>
               </div>
 
-              {devCode && (
+              {devCode ? (
                 <div
                   role="note"
                   className="rounded-xl bg-[#d9fdd3]/70 px-3 py-2.5 text-center text-sm text-[#0a6f53]"
@@ -242,9 +244,30 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                     {devCode}
                   </code>
                 </div>
+              ) : (
+                smsSent && (
+                  <div
+                    role="status"
+                    className="rounded-xl bg-[#d9fdd3]/70 px-3 py-2.5 text-center text-sm text-[#0a6f53]"
+                  >
+                    أرسلنا رمز التحقق برسالة نصية SMS إلى{' '}
+                    <span dir="ltr" className="font-mono font-bold">
+                      {normalizePhone(phone)}
+                    </span>
+                  </div>
+                )
               )}
 
               <CodeSlots value={code} onChange={setCode} disabled={loading} autoFocus />
+
+              <button
+                type="button"
+                onClick={() => void handleSendCode()}
+                disabled={loading}
+                className="text-xs font-medium text-[#00a884] underline-offset-4 hover:underline disabled:opacity-50"
+              >
+                لم يصلك الرمز؟ إعادة الإرسال
+              </button>
 
               {needName && (
                 <div className="flex flex-col gap-1.5">

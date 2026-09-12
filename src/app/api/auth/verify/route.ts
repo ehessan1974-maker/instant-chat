@@ -10,6 +10,37 @@ import {
 
 const NAME_MAX_LENGTH = 30
 
+// حد محاولات الدخول الخاطئة: 10 محاولات لكل رقم كل 15 دقيقة
+// (يمنع تخمين الرمز المكوّن من 4 أرقام — حرج مع الرموز الحقيقية المرسلة بالرسائل)
+const VERIFY_WINDOW_MS = 15 * 60 * 1000
+const VERIFY_MAX_FAILS = 10
+const failedVerifies = new Map<string, { count: number; firstAt: number }>()
+
+function verifyBlocked(phone: string): boolean {
+  const entry = failedVerifies.get(phone)
+  if (!entry) return false
+  if (Date.now() - entry.firstAt > VERIFY_WINDOW_MS) {
+    failedVerifies.delete(phone)
+    return false
+  }
+  return entry.count >= VERIFY_MAX_FAILS
+}
+
+function registerVerifyFail(phone: string): void {
+  const entry = failedVerifies.get(phone)
+  if (!entry || Date.now() - entry.firstAt > VERIFY_WINDOW_MS) {
+    failedVerifies.set(phone, { count: 1, firstAt: Date.now() })
+  } else {
+    entry.count += 1
+  }
+  if (failedVerifies.size > 10_000) {
+    const now = Date.now()
+    for (const [key, value] of failedVerifies) {
+      if (now - value.firstAt > VERIFY_WINDOW_MS) failedVerifies.delete(key)
+    }
+  }
+}
+
 /**
  * POST /api/auth/verify
  * body: { phone, code, name? }
@@ -34,6 +65,10 @@ export async function POST(req: Request) {
     }
     const code = codeRaw.trim()
 
+    if (verifyBlocked(phone)) {
+      return NextResponse.json({ error: 'TOO_MANY_ATTEMPTS' }, { status: 429 })
+    }
+
     const name = typeof body?.name === 'string' ? body.name.trim() : ''
     const existingUser = await db.user.findUnique({ where: { phone } })
 
@@ -53,8 +88,10 @@ export async function POST(req: Request) {
       orderBy: { createdAt: 'desc' },
     })
     if (!otp) {
+      registerVerifyFail(phone)
       return NextResponse.json({ error: 'INVALID_CODE' }, { status: 400 })
     }
+    failedVerifies.delete(phone)
     await db.otpCode.update({ where: { id: otp.id }, data: { used: true } })
 
     const user =
