@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Loader2, MessageCircle } from 'lucide-react';
+import { ArrowRight, Loader2, MessageCircle, Send } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -88,6 +88,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
   const [needName, setNeedName] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
   const [smsSent, setSmsSent] = useState(false);
+  const [tgLink, setTgLink] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -110,8 +111,10 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
     setLoading(true);
     try {
       const res = await requestOtp(p);
+      const viaTelegram = res.channel === 'telegram' && Boolean(res.linkUrl);
       setDevCode(res.code ?? null);
-      setSmsSent(res.delivered === true);
+      setSmsSent(res.delivered === true && !viaTelegram);
+      setTgLink(viaTelegram ? (res.linkUrl ?? null) : null);
       setStep('code');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'تعذر إرسال رمز التحقق، حاول مجدداً');
@@ -219,6 +222,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                   onClick={() => {
                     setStep('phone');
                     setCode('');
+                    setTgLink(null);
                     setError(null);
                   }}
                   className="flex h-8 w-8 items-center justify-center rounded-full text-[#008069] hover:bg-black/5"
@@ -234,28 +238,49 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                 </div>
               </div>
 
-              {devCode ? (
-                <div
-                  role="note"
-                  className="rounded-xl bg-[#d9fdd3]/70 px-3 py-2.5 text-center text-sm text-[#0a6f53]"
-                >
-                  وضع تجريبي بلا مزود SMS — رمز التجربة:{' '}
-                  <code dir="ltr" className="font-mono text-base font-extrabold tracking-widest">
-                    {devCode}
-                  </code>
+              {tgLink ? (
+                <div className="flex flex-col gap-2.5 rounded-xl bg-[#e7f6f2] px-3 py-3 text-center">
+                  <p className="text-sm font-bold text-[#0a6f53]">إرسال الرمز عبر تيليجرام 📨</p>
+                  <a
+                    href={tgLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mx-auto flex h-11 w-full max-w-[280px] items-center justify-center gap-2 rounded-xl bg-[#00a884] text-base font-bold text-white transition-colors hover:bg-[#017561]"
+                  >
+                    <Send className="h-5 w-5" />
+                    استلم الرمز عبر تيليجرام
+                  </a>
+                  <p className="text-xs leading-5 text-[#3b4a54]">
+                    اضغط الزر ثم <span className="font-bold">START</span> في تيليجرام — سيصلك الرمز
+                    خلال ثوانٍ، ثم أدخله هنا
+                  </p>
                 </div>
               ) : (
-                smsSent && (
-                  <div
-                    role="status"
-                    className="rounded-xl bg-[#d9fdd3]/70 px-3 py-2.5 text-center text-sm text-[#0a6f53]"
-                  >
-                    أرسلنا رمز التحقق برسالة نصية SMS إلى{' '}
-                    <span dir="ltr" className="font-mono font-bold">
-                      {normalizePhone(phone)}
-                    </span>
-                  </div>
-                )
+                <>
+                  {devCode ? (
+                    <div
+                      role="note"
+                      className="rounded-xl bg-[#d9fdd3]/70 px-3 py-2.5 text-center text-sm text-[#0a6f53]"
+                    >
+                      وضع تجريبي بلا مزود SMS — رمز التجربة:{' '}
+                      <code dir="ltr" className="font-mono text-base font-extrabold tracking-widest">
+                        {devCode}
+                      </code>
+                    </div>
+                  ) : (
+                    smsSent && (
+                      <div
+                        role="status"
+                        className="rounded-xl bg-[#d9fdd3]/70 px-3 py-2.5 text-center text-sm text-[#0a6f53]"
+                      >
+                        أرسلنا رمز التحقق برسالة نصية SMS إلى{' '}
+                        <span dir="ltr" className="font-mono font-bold">
+                          {normalizePhone(phone)}
+                        </span>
+                      </div>
+                    )
+                  )}
+                </>
               )}
 
               <CodeSlots value={code} onChange={setCode} disabled={loading} autoFocus />

@@ -16,6 +16,10 @@ fi
 export DATABASE_URL="file:/app/db/custom.db"
 export VOICE_DIR="/app/db/voice"
 
+# ترقية المخطط القديم بأمان (أعمدة قناة تيليجرام لجدول OtpCode إن لزم)
+echo "[start] فحص مخطط قاعدة البيانات..."
+node /app/migrate.js || echo "[start] تخطي الترقية"
+
 # 1) خدمة الرسائل على 3003
 echo "[start] تشغيل خدمة الرسائل على 3003..."
 cd /app/chat-service

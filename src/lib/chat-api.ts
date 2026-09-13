@@ -198,8 +198,12 @@ export interface RequestOtpResult {
   ok?: boolean;
   code?: string;
   isNew?: boolean;
-  /** true = أُرسل الرمز برسالة SMS حقيقية (لا يظهر الرمز في الاستجابة) */
+  /** true = أُرسل الرمز فعلياً (رسالة SMS أو تيليجرام) ولا يظهر في الاستجابة */
   delivered?: boolean;
+  /** قناة التسليم: sms | telegram */
+  channel?: string;
+  /** عند التسليم عبر تيليجرام: رابط ضغطة واحدة لاستلام الرمز من البوت */
+  linkUrl?: string;
   error?: string;
 }
 

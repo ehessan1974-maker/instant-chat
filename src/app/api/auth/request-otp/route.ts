@@ -3,6 +3,11 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { normalizePhone, readJsonRecord } from '@/lib/auth'
 import { isSmsConfigured, getSmsProvider, sendSms } from '@/lib/sms'
+import {
+  isTelegramConfigured,
+  getTelegramBotUsername,
+  newTelegramLinkCode,
+} from '@/lib/telegram'
 
 const OTP_TTL_MS = 10 * 60 * 1000 // صلاحية الرمز: 10 دقائق
 const RESEND_COOLDOWN_MS = 60 * 1000 // دقيقة بين كل طلبين لنفس الرقم
@@ -92,10 +97,18 @@ export async function POST(req: Request) {
     }
 
     const code = String(randomInt(0, 10000)).padStart(4, '0')
+
+    // قناة تيليجرام لها الأولوية عند ضبط توكن البوت + يوزره (مجانية وبلا أجهزة)
+    const botUsername = isTelegramConfigured() ? getTelegramBotUsername() : null
+    const viaTelegram = Boolean(botUsername)
+    const linkCode = viaTelegram ? newTelegramLinkCode() : null
+
     await db.otpCode.create({
       data: {
         phone,
         code,
+        channel: viaTelegram ? 'telegram' : 'sms',
+        linkCode,
         expiresAt: new Date(Date.now() + OTP_TTL_MS),
       },
     })
@@ -105,6 +118,18 @@ export async function POST(req: Request) {
       where: { phone },
       select: { id: true },
     })
+
+    // تسليم عبر بوت تيليجرام: رابط ضغطة واحدة — الرمز لا يُكشف في أي استجابة
+    if (viaTelegram && botUsername && linkCode) {
+      const linkUrl = `https://t.me/${botUsername}?start=${linkCode}`
+      return NextResponse.json({
+        ok: true,
+        delivered: true,
+        channel: 'telegram',
+        linkUrl,
+        isNew: !existing,
+      })
+    }
 
     // الإرسال الحقيقي: رسالة نصية للرقم بلا أي كشف للرمز في الاستجابة
     if (isSmsConfigured()) {

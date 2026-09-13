@@ -29,6 +29,7 @@ COPY prebuilt/chat-service ./chat-service
 COPY prebuilt/seed /seed
 # وكيل Node.js يوزع الطلبات (بديل Caddy) — إلى /app حيث كل الملفات
 COPY docker/proxy.js /app/proxy.js
+COPY docker/migrate.js /app/migrate.js
 COPY docker/start.sh /start.sh
 RUN chmod +x /start.sh && mkdir -p /app/db/voice
 

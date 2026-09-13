@@ -142,7 +142,7 @@
     }
   },
   "appDir": "/tmp/ic-build",
-  "relativeAppDir": "ic-build",
+  "relativeAppDir": "",
   "files": [
     ".next/routes-manifest.json",
     ".next/server/pages-manifest.json",
@@ -158,7 +158,8 @@
     ".next/BUILD_ID",
     ".next/server/next-font-manifest.js",
     ".next/server/next-font-manifest.json",
-    ".next/required-server-files.json"
+    ".next/required-server-files.json",
+    ".next/server/instrumentation.js"
   ],
   "ignore": []
 }
