@@ -89,6 +89,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
   const [devCode, setDevCode] = useState<string | null>(null);
   const [smsSent, setSmsSent] = useState(false);
   const [tgLink, setTgLink] = useState<string | null>(null);
+  const [usedChannel, setUsedChannel] = useState<'telegram' | 'sms'>('telegram');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -101,7 +102,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
     return v.replace(/[^\d+]/g, '');
   }
 
-  async function handleSendCode() {
+  async function handleSendCode(channelHint?: 'telegram' | 'sms') {
     const p = normalizePhone(phone);
     if (p.replace(/\D/g, '').length < 8) {
       setError('يرجى إدخال رقم هاتف صحيح مع رمز الدولة');
@@ -110,8 +111,11 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
     setError(null);
     setLoading(true);
     try {
-      const res = await requestOtp(p);
+      // إعادة الإرسال تبقى على نفس القناة التي اختارها المستخدم
+      const channel = channelHint ?? usedChannel;
+      const res = await requestOtp(p, channel);
       const viaTelegram = res.channel === 'telegram' && Boolean(res.linkUrl);
+      setUsedChannel(viaTelegram ? 'telegram' : 'sms');
       setDevCode(res.code ?? null);
       setSmsSent(res.delivered === true && !viaTelegram);
       setTgLink(viaTelegram ? (res.linkUrl ?? null) : null);
@@ -223,6 +227,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                     setStep('phone');
                     setCode('');
                     setTgLink(null);
+                    setUsedChannel('telegram');
                     setError(null);
                   }}
                   className="flex h-8 w-8 items-center justify-center rounded-full text-[#008069] hover:bg-black/5"
@@ -254,6 +259,15 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                     اضغط الزر ثم <span className="font-bold">START</span> في تيليجرام — سيصلك الرمز
                     خلال ثوانٍ، ثم أدخله هنا
                   </p>
+                  {/* بديل لمن لا يملك حساب تيليجرام */}
+                  <button
+                    type="button"
+                    onClick={() => void handleSendCode('sms')}
+                    disabled={loading}
+                    className="mt-1 text-xs font-medium text-[#008069] underline-offset-4 hover:underline disabled:opacity-50"
+                  >
+                    لا تملك تيليجرام؟ استلم الرمز برسالة نصية SMS
+                  </button>
                 </div>
               ) : (
                 <>

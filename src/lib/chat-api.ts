@@ -207,10 +207,13 @@ export interface RequestOtpResult {
   error?: string;
 }
 
-export function requestOtp(phone: string): Promise<RequestOtpResult> {
+export function requestOtp(
+  phone: string,
+  channel?: 'telegram' | 'sms'
+): Promise<RequestOtpResult> {
   return apiFetch<RequestOtpResult>('/api/auth/request-otp', {
     method: 'POST',
-    body: JSON.stringify({ phone }),
+    body: JSON.stringify(channel ? { phone, channel } : { phone }),
   });
 }
 

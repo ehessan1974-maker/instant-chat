@@ -60,7 +60,10 @@ function recordSend(phone: string): void {
 
 /**
  * POST /api/auth/request-otp
- * body: { phone }
+ * body: { phone, channel?: 'telegram' | 'sms' }
+ *
+ * القناة الافتراضية: تيليجرام عند ضبط توكن البوت، وإلا SMS.
+ * يمكن طلب 'sms' صراحةً لمن لا يملك تيليجرام (زر البديل في الواجهة).
  *
  * مع مزود SMS مضبوط (SMS_PROVIDER): يرسل رمزاً حقيقياً بالرسالة النصية
  * ولا يعيد الرمز في الاستجابة إطلاقاً.
@@ -98,8 +101,11 @@ export async function POST(req: Request) {
 
     const code = String(randomInt(0, 10000)).padStart(4, '0')
 
-    // قناة تيليجرام لها الأولوية عند ضبط توكن البوت + يوزره (مجانية وبلا أجهزة)
-    const botUsername = isTelegramConfigured() ? getTelegramBotUsername() : null
+    // اختيار القناة: تيليجرام عند ضبط البوت إلا إذا طلب المستخدم SMS صراحةً
+    // (مستخدم بلا حساب تيليجرام يضغط زر البديل في الواجهة)
+    const requestedSms = body?.channel === 'sms'
+    const botUsername =
+      !requestedSms && isTelegramConfigured() ? getTelegramBotUsername() : null
     const viaTelegram = Boolean(botUsername)
     const linkCode = viaTelegram ? newTelegramLinkCode() : null
 
