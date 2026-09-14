@@ -16,9 +16,9 @@
 #        termux-wake-lock && nohup ./relay-sms.sh > relay.log 2>&1 &
 # ============================================================
 
-# ⚙️ عدّل هذين السطرين:
+# ⚙️ عدّل هذين السطرين (أو مرّر التوكن كمتغير بيئة: SMS_RELAY_TOKEN=xxx ./relay-sms.sh):
 BASE="https://instant-chat-f2ac.onrender.com"   # عنوان سيرفرك
-TOKEN="ضع_رمز_SMS_RELAY_TOKEN_هنا"              # نفس قيمة SMS_RELAY_TOKEN على Render
+TOKEN="${SMS_RELAY_TOKEN:-ضع_رمز_SMS_RELAY_TOKEN_هنا}"   # نفس قيمة SMS_RELAY_TOKEN على Render
 
 POLL_SECONDS=5
 LIMIT=5
