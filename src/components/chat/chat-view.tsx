@@ -315,6 +315,44 @@ export function ChatView({
     };
   }, [conversation.id]);
 
+  /* ------------- مزامنة REST دورية (رسائل النسخة الخفيفة legacy) -------------
+   * رسائل متصفحات legacy تُرسَل عبر REST ولا تمرّ على خدمة السوكيت، لذا
+   * نطابق بهدوء آخر الرسائل كل بضع ثوانٍ (وعند العودة للتبويب) ونضيف
+   * الجديد منها فقط — بلا دبلوكات (فلترة بالمعرّف وclientId). */
+  useEffect(() => {
+    let cancelled = false;
+    const reconcile = () => {
+      if (cancelled || document.hidden) return;
+      if (loadError) return;
+      fetchMessages(conversation.id)
+        .then(({ messages: list }) => {
+          if (cancelled || !list.length) return;
+          setMessages((cur) => {
+            const byId = new Set(cur.map((m) => m.id));
+            const byClientId = new Set(
+              cur.map((m) => m.clientId).filter((c): c is string => Boolean(c))
+            );
+            const fresh = list.filter(
+              (m) => !byId.has(m.id) && !(m.clientId && byClientId.has(m.clientId))
+            );
+            if (!fresh.length) return cur;
+            if (nearBottomRef.current) pendingBottomRef.current = 'auto';
+            return [...cur, ...fresh].sort((a, b) => cmpTime(a.createdAt, b.createdAt));
+          });
+        })
+        .catch(() => {
+          // صامتة عمداً — السوكيت هو المسار الأساسي والـREST طبقة أمان
+        });
+    };
+    const iv = setInterval(reconcile, 7000);
+    window.addEventListener('focus', reconcile);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+      window.removeEventListener('focus', reconcile);
+    };
+  }, [conversation.id, loadError]);
+
   /* --------------------- تمرير: أول تحميل + استعادة موضع الأقدم --------------------- */
   useLayoutEffect(() => {
     const el = scrollRef.current;

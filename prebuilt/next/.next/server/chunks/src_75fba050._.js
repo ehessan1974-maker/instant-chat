@@ -1,3 +1,0 @@
-module.exports=[23322,e=>{"use strict";async function r(){if(process.env.TELEGRAM_BOT_TOKEN)try{let{startBotPolling:r}=await e.A(63936);await r()}catch(e){console.error("[instrumentation] فشل بدء بوت تيليجرام:",e)}}e.s(["register",()=>r])},63936,e=>{e.v(r=>Promise.all(["server/chunks/[root-of-the-server]__d134139e._.js"].map(r=>e.l(r))).then(()=>r(67186)))}];
-
-//# sourceMappingURL=src_75fba050._.js.map

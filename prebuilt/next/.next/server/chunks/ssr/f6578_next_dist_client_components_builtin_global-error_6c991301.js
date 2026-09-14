@@ -1,0 +1,3 @@
+module.exports=[29537,(a,b,c)=>{let{createClientModuleProxy:d}=a.r(45235);a.n(d("[project]/.github-publish/instant-chat/node_modules/next/dist/client/components/builtin/global-error.js <module evaluation>"))},69112,(a,b,c)=>{let{createClientModuleProxy:d}=a.r(45235);a.n(d("[project]/.github-publish/instant-chat/node_modules/next/dist/client/components/builtin/global-error.js"))},45678,a=>{"use strict";a.i(29537);var b=a.i(69112);a.n(b)}];
+
+//# sourceMappingURL=f6578_next_dist_client_components_builtin_global-error_6c991301.js.map

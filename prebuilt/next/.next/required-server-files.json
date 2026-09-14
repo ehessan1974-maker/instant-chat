@@ -141,8 +141,8 @@
       "isExperimentalCompile": false
     }
   },
-  "appDir": "/tmp/ic-build",
-  "relativeAppDir": "",
+  "appDir": "/home/z/my-project/.github-publish/instant-chat",
+  "relativeAppDir": ".github-publish/instant-chat",
   "files": [
     ".next/routes-manifest.json",
     ".next/server/pages-manifest.json",

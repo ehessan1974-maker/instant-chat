@@ -1,0 +1,878 @@
+<!doctype html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#008069">
+<title>محادثة فورية</title>
+<style>
+/* ============================================================
+   النسخة الخفيفة — CSS كلاسيكي 100% بلا @layer ولا oklch ولا
+   color-mix ولا flex-gap — تعمل على متصفحات قديمة جداً
+   (أندرويد 4/5، WebView المجمد، Chrome 30+)
+   ============================================================ */
+html, body { height: 100%; margin: 0; padding: 0; }
+body {
+  font-family: Tahoma, 'Segoe UI', Arial, sans-serif;
+  background: #e5e5e5;
+  color: #111b21;
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+}
+* { box-sizing: border-box; }
+.hidden { display: none !important; }
+
+#app { position: relative; height: 100%; max-width: 480px; margin: 0 auto; background: #fff; overflow: hidden; }
+.screen { position: absolute; top: 0; right: 0; left: 0; bottom: 0; background: #fff; }
+
+/* ------------------------- شاشة الدخول ------------------------- */
+#screen-login {
+  background: #075e54;
+  background: -webkit-linear-gradient(top, #075e54, #008069);
+  background: linear-gradient(top, #075e54, #008069);
+  overflow-y: auto;
+}
+.login-wrap { padding: 30px 16px 24px; text-align: center; }
+.logo-circle {
+  width: 74px; height: 74px; line-height: 74px; margin: 0 auto 10px;
+  border-radius: 50%; background: rgba(255,255,255,.15);
+  color: #fff; font-size: 34px; font-weight: bold;
+}
+.login-wrap h1 { color: #fff; font-size: 24px; margin: 0 0 4px; }
+.login-sub { color: rgba(255,255,255,.8); font-size: 13px; margin: 0 0 20px; }
+.card { background: #fff; border-radius: 14px; padding: 18px 16px; text-align: right;
+        box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+.card h2 { font-size: 17px; margin: 0 0 4px; text-align: center; }
+.card .hint { color: #667781; font-size: 13px; margin: 0 0 14px; text-align: center; }
+label.fld { display: block; font-size: 13px; color: #3b4a54; margin: 0 0 4px; font-weight: bold; }
+input.txt {
+  width: 100%; height: 42px; border: 1px solid #cfd9de; border-radius: 10px;
+  padding: 0 12px; font-size: 16px; font-family: inherit; color: #111b21;
+  background: #fff; outline: none;
+}
+input.txt:focus { border-color: #00a884; }
+.btn {
+  width: 100%; height: 44px; border: 0; border-radius: 10px; margin-top: 14px;
+  background: #00a884; color: #fff; font-size: 16px; font-weight: bold; font-family: inherit;
+}
+.btn:disabled { opacity: .6; }
+.linkbtn {
+  background: none; border: 0; padding: 0; margin: 10px 0 0; color: #00a884;
+  font-size: 13px; font-family: inherit; text-decoration: underline;
+}
+.err { color: #d32f2f; font-size: 13px; font-weight: bold; margin: 10px 0 0; }
+.okbox {
+  background: #d9fdd3; color: #0a6f53; border-radius: 10px; padding: 8px 10px;
+  font-size: 13px; margin: 10px 0 0; text-align: center;
+}
+.okbox b { font-size: 17px; letter-spacing: 3px; direction: ltr; unicode-bidi: embed; }
+.tgbox { background: #e7f6f2; border-radius: 10px; padding: 10px; margin: 10px 0 0; text-align: center; }
+.tgbox p { margin: 0 0 8px; font-size: 13px; color: #0a6f53; font-weight: bold; }
+.tgbox p.small { font-weight: normal; color: #3b4a54; line-height: 1.6; }
+.tgbtn {
+  display: block; height: 42px; line-height: 42px; border-radius: 10px; margin: 0 auto;
+  background: #00a884; color: #fff; font-weight: bold; font-size: 15px;
+  text-decoration: none; max-width: 280px;
+}
+.phone-echo { direction: ltr; unicode-bidi: embed; text-align: right; color: #667781; font-size: 12px; }
+.login-foot { color: rgba(255,255,255,.7); font-size: 12px; text-align: center; margin-top: 14px; }
+.backbtn {
+  background: none; border: 0; font-size: 22px; color: #008069; padding: 0 0 4px;
+  cursor: pointer; font-family: inherit;
+}
+
+/* ------------------------- الشريط العلوي العام ------------------------- */
+.topbar {
+  height: 52px; background: #008069; color: #fff;
+  padding: 0 12px; position: relative; z-index: 2;
+}
+.topbar .bar-inner { height: 52px; }
+.topbar h2 { font-size: 17px; margin: 0; display: inline-block; vertical-align: middle; }
+.barbtn {
+  background: none; border: 0; color: #fff; font-size: 15px; font-family: inherit;
+  padding: 6px 8px; margin: 0; cursor: pointer;
+}
+.barbtn.back { font-size: 24px; padding: 0 2px; vertical-align: middle; }
+.float-right { float: left; }
+.vmid { display: inline-block; vertical-align: middle; }
+
+/* ------------------------- قائمة المحادثات ------------------------- */
+#conv-list, #user-list { list-style: none; margin: 0; padding: 0; overflow-y: auto;
+  position: absolute; top: 52px; bottom: 0; right: 0; left: 0; background: #fff; }
+.row { border-bottom: 1px solid #f0f0f0; padding: 10px 12px; cursor: pointer; }
+.row:active { background: #f5f6f6; }
+.avatar {
+  width: 46px; height: 46px; line-height: 46px; border-radius: 50%; color: #fff;
+  font-size: 19px; font-weight: bold; text-align: center; float: right; margin-left: 10px;
+}
+.rowbody { overflow: hidden; }
+.rowline1 .rname { font-weight: bold; font-size: 15px; }
+.rowline1 .rtime { color: #667781; font-size: 11px; float: left; margin-top: 3px; }
+.rpreview { color: #667781; font-size: 13px; margin-top: 2px; }
+.badge {
+  float: left; background: #00a884; color: #fff; border-radius: 12px;
+  font-size: 12px; font-weight: bold; padding: 1px 8px; margin-top: 2px;
+}
+.fab {
+  position: absolute; bottom: 18px; left: 16px; width: 54px; height: 54px; border-radius: 50%;
+  background: #00a884; color: #fff; border: 0; font-size: 28px; line-height: 54px;
+  box-shadow: 0 3px 8px rgba(0,0,0,.35); cursor: pointer; z-index: 3; padding: 0;
+}
+.empty-list { color: #8696a0; text-align: center; padding: 40px 20px; font-size: 14px; line-height: 1.8; }
+
+/* ------------------------- شاشة المحادثة ------------------------- */
+#screen-chat { background: #efeae2; }
+#msgs {
+  position: absolute; top: 52px; bottom: 58px; right: 0; left: 0;
+  overflow-y: auto; padding: 10px 10px 4px;
+}
+.bub-row { margin: 0 0 8px; text-align: left; }
+.bub-row.mine { text-align: right; }
+.bub {
+  display: inline-block; max-width: 82%; background: #fff; border-radius: 10px;
+  padding: 6px 10px 4px; font-size: 15px; line-height: 1.5; text-align: right;
+  box-shadow: 0 1px 1px rgba(0,0,0,.12); word-wrap: break-word;
+}
+.bub-row.mine .bub { background: #d9fdd3; }
+.bub .sender { display: block; font-size: 12px; font-weight: bold; margin-bottom: 2px; }
+.bub .mtime { display: block; color: #8696a0; font-size: 10px; text-align: left; margin-top: 2px; }
+.sys-row { text-align: center; margin: 0 0 8px; }
+.sys-pill {
+  display: inline-block; background: #ffeecd; color: #8a6d3b; font-size: 12px;
+  border-radius: 10px; padding: 4px 10px;
+}
+#composer {
+  position: absolute; bottom: 0; right: 0; left: 0; background: #f0f2f5;
+  border-top: 1px solid #d9dbdd; padding: 8px;
+}
+#composer .c-in {
+  width: 78%; height: 42px; border: 1px solid #cfd9de; border-radius: 21px;
+  padding: 0 14px; font-size: 16px; font-family: inherit; outline: none; background: #fff;
+}
+#composer .c-send {
+  width: 19%; height: 42px; border: 0; border-radius: 21px; background: #00a884;
+  color: #fff; font-size: 15px; font-weight: bold; font-family: inherit; cursor: pointer;
+  margin-right: 2%;
+}
+#chat-err { color: #d32f2f; font-size: 12px; margin: 0 4px 4px; position: absolute; bottom: 96px; right: 0; left: 0; text-align: center; }
+.about-gray { color: #8696a0; font-size: 12px; margin-top: 2px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ شاشة الدخول ============ -->
+  <section id="screen-login" class="screen">
+    <div class="login-wrap">
+      <div class="logo-circle">م</div>
+      <h1>محادثة فورية</h1>
+      <p class="login-sub">رسائل مباشرة وخاصة بأسلوب واتساب</p>
+      <div class="card">
+        <!-- الخطوة 1: الرقم -->
+        <div id="step-phone">
+          <h2>تسجيل الدخول</h2>
+          <p class="hint">أدخل رقم هاتفك وسنرسل لك رمز تحقق من 4 أرقام</p>
+          <label class="fld" for="phone">رقم الهاتف</label>
+          <input class="txt" id="phone" type="tel" placeholder="+963 9xx xxx xxx" style="direction:ltr;text-align:right">
+          <button class="btn" id="btn-request" type="button">إرسال رمز التحقق</button>
+        </div>
+        <!-- الخطوة 2: الرمز -->
+        <div id="step-code" class="hidden">
+          <button class="backbtn" id="btn-back-phone" type="button" title="تغيير الرقم">&#8594;</button>
+          <h2>أدخل رمز التحقق</h2>
+          <p class="hint phone-echo" id="phone-echo"></p>
+          <div id="tg-box" class="tgbox hidden">
+            <p>إرسال الرمز عبر تيليجرام</p>
+            <a class="tgbtn" id="tg-link" href="#">استلم الرمز عبر تيليجرام</a>
+            <p class="small">اضغط الزر ثم START في تيليجرام — سيصلك الرمز خلال ثوانٍ، ثم أدخله هنا</p>
+          </div>
+          <div id="dev-box" class="okbox hidden"></div>
+          <div id="sms-box" class="okbox hidden"></div>
+          <label class="fld" for="code" style="margin-top:12px">رمز التحقق</label>
+          <input class="txt" id="code" type="tel" maxlength="4" placeholder="••••"
+                 style="direction:ltr;text-align:center;font-size:22px;letter-spacing:8px;font-weight:bold">
+          <div id="name-row" class="hidden">
+            <label class="fld" for="name" style="margin-top:12px">اسمك</label>
+            <input class="txt" id="name" type="text" maxlength="40" placeholder="اكتب الاسم الذي سيراه الآخرون">
+          </div>
+          <button class="btn" id="btn-verify" type="button">تحقق ومتابعة</button>
+          <button class="linkbtn" id="btn-resend" type="button">لم يصلك الرمز؟ إعادة الإرسال</button>
+        </div>
+        <p class="err hidden" id="login-err"></p>
+      </div>
+      <p class="login-foot">بالمتابعة أنت توافق على محادثة الآخرين باحترام 🙂</p>
+    </div>
+  </section>
+
+  <!-- ============ قائمة المحادثات ============ -->
+  <section id="screen-list" class="screen hidden">
+    <div class="topbar">
+      <div class="bar-inner">
+        <span class="vmid"><h2>محادثة فورية</h2></span>
+        <span class="float-right"><button class="barbtn" id="btn-logout" type="button">خروج</button></span>
+      </div>
+    </div>
+    <ul id="conv-list"></ul>
+    <button class="fab" id="btn-new-chat" type="button" title="محادثة جديدة">+</button>
+  </section>
+
+  <!-- ============ اختيار مستخدم لمحادثة جديدة ============ -->
+  <section id="screen-users" class="screen hidden">
+    <div class="topbar">
+      <div class="bar-inner">
+        <button class="barbtn back vmid" id="btn-users-back" type="button">&#8594;</button>
+        <span class="vmid"><h2>محادثة جديدة</h2></span>
+      </div>
+    </div>
+    <ul id="user-list"></ul>
+  </section>
+
+  <!-- ============ المحادثة ============ -->
+  <section id="screen-chat" class="screen hidden">
+    <div class="topbar">
+      <div class="bar-inner">
+        <button class="barbtn back vmid" id="btn-chat-back" type="button">&#8594;</button>
+        <span class="vmid"><h2 id="chat-title"></h2></span>
+      </div>
+    </div>
+    <div id="msgs"></div>
+    <p id="chat-err" class="hidden"></p>
+    <div id="composer">
+      <input class="c-in" id="msg-input" type="text" placeholder="اكتب رسالة">
+      <button class="c-send" id="btn-send-msg" type="button">إرسال</button>
+    </div>
+  </section>
+
+</div>
+<noscript><p style="text-align:center">هذا التطبيق يحتاج تشغيل جافاسكربت</p></noscript>
+<script>
+/* ============================================================
+   النسخة الخفيفة — JavaScript ES5 خالص (بلا سهم/بلا Promise/
+   بلا fetch) + REST فقط — متوافقة مع متصفحات أندرويد القديمة.
+   نفس واجهات REST التي يستخدمها التطبيق الحديث، ونفس مفاتيح
+   التخزين ic_token/ic_me فتبقى الجلسة صالحة في الجهتين.
+   ============================================================ */
+(function () {
+  'use strict';
+
+  /* ------------------------------ حالة ------------------------------ */
+  var state = {
+    token: null,
+    me: null,
+    screen: 'login',
+    conversations: [],
+    convSig: '',
+    chat: null,          // { id, type, name }
+    messages: [],
+    msgSig: '',
+    needName: false,
+    sending: false,
+    lastListAt: 0,
+    lastReadPatch: 0,
+    loadingUsers: false
+  };
+
+  /* ------------------------------ أدوات ------------------------------ */
+  function $(id) { return document.getElementById(id); }
+
+  function show(el, on) {
+    if (on) el.className = el.className.replace(/\bhidden\b/g, '').replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+    else if (!/\bhidden\b/.test(el.className)) el.className += ' hidden';
+  }
+
+  function setText(el, t) { if (el.textContent !== t) el.textContent = t; }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function fmtTime(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var now = new Date();
+    var hm = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    if (d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+      return hm;
+    }
+    return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1);
+  }
+
+  /** رسالة خطأ عربية مطابقة لأخطاء التطبيق الحديث */
+  function errText(status, payload) {
+    var code = payload && typeof payload.error === 'string' ? payload.error : '';
+    switch (code) {
+      case 'NAME_REQUIRED': return 'NAME_REQUIRED';
+      case 'INVALID_CODE':
+      case 'OTP_INVALID': return 'رمز التحقق غير صحيح أو منتهي الصلاحية';
+      case 'OTP_COOLDOWN': return 'انتظر دقيقة ثم اطلب رمزاً جديداً';
+      case 'OTP_RATE_LIMITED': return 'تجاوزت عدد مرات إرسال الرموز المسموحة — حاول لاحقاً';
+      case 'SMS_FAILED': return 'تعذر إرسال الرسالة النصية — تحقق من الرقم وحاول بعد قليل';
+      case 'TOO_MANY_ATTEMPTS': return 'محاولات كثيرة خاطئة — انتظر 15 دقيقة ثم جرّب مجدداً';
+      case 'PHONE_REQUIRED': return 'يرجى إدخال رقم هاتف صحيح';
+      case 'PHONE_INVALID': return 'يرجى إدخال رقم هاتف صحيح';
+      case 'UNAUTHORIZED': return 'انتهت الجلسة، يرجى تسجيل الدخول مجدداً';
+      case 'FORBIDDEN': return 'لا تملك صلاحية الوصول لهذه المحادثة';
+      case 'NOT_FOUND': return 'غير موجود';
+      case 'EMPTY_MESSAGE': return 'الرسالة فارغة';
+      default:
+        if (status === 0) return 'تعذر الوصول للخادم — تحقق من اتصالك';
+        return 'حدث خطأ (' + status + ')';
+    }
+  }
+
+  function handle401(status) {
+    if (status === 401 || status === 403) {
+      state.token = null;
+      state.me = null;
+      try { localStorage.removeItem('ic_token'); localStorage.removeItem('ic_me'); } catch (e) {}
+      stopChat();
+      showScreen('login');
+      return true;
+    }
+    return false;
+  }
+
+  /* ------------------------- عميل REST (XHR) ------------------------- */
+  function api(method, path, body, cb) {
+    var xhr;
+    try { xhr = new XMLHttpRequest(); } catch (e) { cb(0, null); return; }
+    try { xhr.open(method, path, true); } catch (e) { cb(0, null); return; }
+    if (body) { try { xhr.setRequestHeader('Content-Type', 'application/json'); } catch (e2) {} }
+    if (state.token) { try { xhr.setRequestHeader('Authorization', 'Bearer ' + state.token); } catch (e3) {} }
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState !== 4) return;
+      var payload = null;
+      if (xhr.responseText) {
+        try { payload = JSON.parse(xhr.responseText); } catch (e) { payload = null; }
+      }
+      cb(xhr.status, payload);
+    };
+    try { xhr.send(body ? JSON.stringify(body) : null); } catch (e) { cb(0, null); }
+  }
+
+  /* ------------------------------ الشاشات ------------------------------ */
+  function showScreen(name) {
+    state.screen = name;
+    show($('screen-login'), name === 'login');
+    show($('screen-list'), name === 'list');
+    show($('screen-users'), name === 'users');
+    show($('screen-chat'), name === 'chat');
+    if (name === 'login') show($('step-phone'), true), show($('step-code'), false), show($('login-err'), false);
+  }
+
+  /* ------------------------------ الدخول ------------------------------ */
+  function normPhone(v) { return String(v).replace(/[^\d+]/g, ''); }
+
+  function requestOtp() {
+    var phone = normPhone($('phone').value);
+    if (phone.replace(/\D/g, '').length < 8) { loginErr('يرجى إدخال رقم هاتف صحيح مع رمز الدولة'); return; }
+    loginErr(null);
+    busy($('btn-request'), true);
+    api('POST', '/api/auth/request-otp', { phone: phone }, function (status, payload) {
+      busy($('btn-request'), false);
+      if (status !== 200 || !payload) {
+        if (handle401(status)) return;
+        loginErr(errText(status, payload));
+        return;
+      }
+      state.pendingPhone = phone;
+      setText($('phone-echo'), phone);
+      var viaTelegram = payload.channel === 'telegram' && payload.linkUrl;
+      show($('tg-box'), !!viaTelegram);
+      if (viaTelegram) $('tg-link').href = payload.linkUrl;
+      var dev = payload.code ? true : false;
+      show($('dev-box'), dev);
+      if (dev) {
+        setText($('dev-box'), '');
+        var b = document.createElement('span');
+        b.appendChild(document.createTextNode('وضع تجريبي بلا مزود SMS — رمز التجربة: '));
+        var c = document.createElement('b');
+        c.appendChild(document.createTextNode(payload.code));
+        $('dev-box').appendChild(b);
+        $('dev-box').appendChild(c);
+      }
+      var sms = payload.delivered === true && !viaTelegram;
+      show($('sms-box'), sms);
+      if (sms) {
+        setText($('sms-box'), '');
+        $('sms-box').appendChild(document.createTextNode('أرسلنا رمز التحقق برسالة نصية SMS إلى ' + phone));
+      }
+      show($('step-phone'), false);
+      show($('step-code'), true);
+      show($('login-err'), false);
+      try { $('code').focus(); } catch (e) {}
+    });
+  }
+
+  function verify() {
+    var code = String($('code').value).replace(/\D/g, '').slice(0, 4);
+    if (code.length < 4) { loginErr('أدخل رمز التحقق المكوّن من 4 أرقام'); return; }
+    var name = $('name').value.replace(/^\s+|\s+$/g, '');
+    if (state.needName && !name) { loginErr('يرجى كتابة اسمك للمتابعة'); return; }
+    loginErr(null);
+    busy($('btn-verify'), true);
+    var body = { phone: state.pendingPhone, code: code };
+    if (state.needName) body.name = name;
+    api('POST', '/api/auth/verify', body, function (status, payload) {
+      busy($('btn-verify'), false);
+      if (status === 422 && payload && payload.error === 'NAME_REQUIRED') {
+        state.needName = true;
+        show($('name-row'), true);
+        try { $('name').focus(); } catch (e) {}
+        return;
+      }
+      if (status !== 200 || !payload || !payload.token) {
+        loginErr(errText(status, payload));
+        return;
+      }
+      state.token = payload.token;
+      state.me = payload.user;
+      try {
+        localStorage.setItem('ic_token', payload.token);
+        localStorage.setItem('ic_me', JSON.stringify(payload.user));
+      } catch (e) {}
+      $('code').value = '';
+      $('name').value = '';
+      state.needName = false;
+      show($('name-row'), false);
+      enterMain();
+    });
+  }
+
+  function loginErr(msg) {
+    var el = $('login-err');
+    if (msg) { setText(el, msg); show(el, true); } else show(el, false);
+  }
+
+  function busy(btn, on) { btn.disabled = !!on; }
+
+  /* ------------------------------ الرئيسية ------------------------------ */
+  function enterMain() {
+    showScreen('list');
+    pollList();
+  }
+
+  function sortConvs(list) {
+    var withMsg = [], without = [], i;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].lastMessage) withMsg.push(list[i]); else without.push(list[i]);
+    }
+    withMsg.sort(function (a, b) {
+      return new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime();
+    });
+    return withMsg.concat(without);
+  }
+
+  function convTitle(c) {
+    if (c.type === 'group') return c.name || 'مجموعة';
+    return (c.other && c.other.name) || 'مستخدم';
+  }
+
+  function previewText(c) {
+    var lm = c.lastMessage;
+    if (!lm) return 'لا رسائل بعد — ابدأ الحديث';
+    var t = lm.type === 'voice' ? 'رسالة صوتية' : String(lm.text || '');
+    if (lm.type === 'voice') t = '\uD83C\uDFA4 ' + t;
+    if (c.type === 'group' && lm.senderName && lm.type !== 'system') {
+      return lm.senderName + ': ' + t;
+    }
+    return t;
+  }
+
+  function pollList() {
+    state.lastListAt = Date.now();
+    api('GET', '/api/conversations', null, function (status, payload) {
+      if (status === 401) { handle401(status); return; }
+      if (status !== 200 || !payload || !payload.conversations) return;
+      state.conversations = sortConvs(payload.conversations);
+      var total = 0, i;
+      for (i = 0; i < state.conversations.length; i++) {
+        if (state.chat && state.conversations[i].id === state.chat.id) continue;
+        total += state.conversations[i].unreadCount || 0;
+      }
+      document.title = total > 0 ? '(' + total + ') محادثة فورية' : 'محادثة فورية';
+      if (state.screen === 'list') renderList();
+    });
+  }
+
+  function renderList() {
+    var ul = $('conv-list');
+    var list = state.conversations;
+    var sig = '';
+    var i;
+    for (i = 0; i < list.length; i++) {
+      sig += list[i].id + ':' + (list[i].unreadCount || 0) + ':' +
+             (list[i].lastMessage ? list[i].lastMessage.id : 'none') + '|';
+    }
+    if (sig === state.convSig) return;
+    state.convSig = sig;
+
+    ul.innerHTML = '';
+    if (!list.length) {
+      var d = document.createElement('li');
+      d.className = 'empty-list';
+      d.appendChild(document.createTextNode('لا محادثات بعد — اضغط زر + لبدء أول محادثة'));
+      ul.appendChild(d);
+      return;
+    }
+    for (i = 0; i < list.length; i++) { ul.appendChild(convRow(list[i])); }
+  }
+
+  function convRow(c) {
+    var li = document.createElement('li');
+    li.className = 'row';
+    var name = convTitle(c);
+    var av = document.createElement('div');
+    av.className = 'avatar';
+    av.style.background = (c.type === 'group' ? '#6a7f8c' : (c.other && c.other.avatarColor) || '#008069');
+    av.appendChild(document.createTextNode((c.type === 'group' ? '\uD83D\uDC65' : name.charAt(0))));
+    li.appendChild(av);
+
+    var body = document.createElement('div');
+    body.className = 'rowbody';
+    var l1 = document.createElement('div');
+    l1.className = 'rowline1';
+    var nm = document.createElement('span');
+    nm.className = 'rname';
+    nm.appendChild(document.createTextNode(name));
+    l1.appendChild(nm);
+    if (c.unreadCount > 0) {
+      var bd = document.createElement('span');
+      bd.className = 'badge';
+      bd.appendChild(document.createTextNode(String(c.unreadCount)));
+      l1.appendChild(bd);
+    } else if (c.lastMessage) {
+      var tm = document.createElement('span');
+      tm.className = 'rtime';
+      tm.appendChild(document.createTextNode(fmtTime(c.lastMessage.createdAt)));
+      l1.appendChild(tm);
+    }
+    body.appendChild(l1);
+    var pv = document.createElement('div');
+    pv.className = 'rpreview';
+    pv.appendChild(document.createTextNode(previewText(c)));
+    body.appendChild(pv);
+    li.appendChild(body);
+
+    li.onclick = function () { openChat(c); };
+    return li;
+  }
+
+  /* --------------------------- محادثة جديدة --------------------------- */
+  function openUsers() {
+    showScreen('users');
+    var ul = $('user-list');
+    ul.innerHTML = '';
+    var li = document.createElement('li');
+    li.className = 'empty-list';
+    li.appendChild(document.createTextNode('جاري تحميل المستخدمين...'));
+    ul.appendChild(li);
+    api('GET', '/api/users', null, function (status, payload) {
+      if (status === 401) { handle401(status); return; }
+      ul.innerHTML = '';
+      if (status !== 200 || !payload || !payload.users) {
+        li = document.createElement('li');
+        li.className = 'empty-list';
+        li.appendChild(document.createTextNode('تعذر تحميل المستخدمين — أعد المحاولة'));
+        ul.appendChild(li);
+        return;
+      }
+      var users = payload.users || [];
+      var meId = state.me && state.me.id;
+      var shown = 0, i;
+      for (i = 0; i < users.length; i++) {
+        if (meId && users[i].id === meId) continue;
+        ul.appendChild(userRow(users[i]));
+        shown++;
+      }
+      if (!shown) {
+        li = document.createElement('li');
+        li.className = 'empty-list';
+        li.appendChild(document.createTextNode('لا مستخدمين بعد — شارك التطبيق مع أصدقائك'));
+        ul.appendChild(li);
+      }
+    });
+  }
+
+  function userRow(u) {
+    var li = document.createElement('li');
+    li.className = 'row';
+    var av = document.createElement('div');
+    av.className = 'avatar';
+    av.style.background = u.avatarColor || '#008069';
+    av.appendChild(document.createTextNode((u.name || '?').charAt(0)));
+    li.appendChild(av);
+    var body = document.createElement('div');
+    body.className = 'rowbody';
+    var nm = document.createElement('div');
+    nm.className = 'rname';
+    nm.appendChild(document.createTextNode(u.name || 'مستخدم'));
+    body.appendChild(nm);
+    if (u.about) {
+      var ab = document.createElement('div');
+      ab.className = 'about-gray';
+      ab.appendChild(document.createTextNode(u.about));
+      body.appendChild(ab);
+    }
+    li.appendChild(body);
+    li.onclick = function () { startWith(u); };
+    return li;
+  }
+
+  function startWith(u) {
+    api('POST', '/api/conversations', { userId: u.id }, function (status, payload) {
+      if (status === 401) { handle401(status); return; }
+      if (status !== 200 || !payload || !payload.conversation) return;
+      var conv = payload.conversation;
+      var known = null, i;
+      for (i = 0; i < state.conversations.length; i++) {
+        if (state.conversations[i].id === conv.id) known = state.conversations[i];
+      }
+      if (!known) {
+        known = {
+          id: conv.id,
+          type: conv.type,
+          name: conv.name || null,
+          other: conv.other || { id: u.id, name: u.name, avatarColor: u.avatarColor },
+          unreadCount: 0
+        };
+        state.conversations = sortConvs([known].concat(state.conversations));
+        state.convSig = '';
+      }
+      openChat(known);
+    });
+  }
+
+  /* ------------------------------ المحادثة ------------------------------ */
+  function openChat(c) {
+    state.chat = { id: c.id, type: c.type, name: convTitle(c), other: c.other || null };
+    state.messages = [];
+    state.msgSig = '';
+    setText($('chat-title'), (c.type === 'group' ? '\uD83D\uDC65 ' : '') + convTitle(c));
+    setText($('chat-err'), '');
+    show($('chat-err'), false);
+    $('msg-input').value = '';
+    showScreen('chat');
+    renderMessages();
+    pollMessages();
+    patchRead(true);
+  }
+
+  function stopChat() {
+    state.chat = null;
+    state.messages = [];
+  }
+
+  function closeChat() {
+    stopChat();
+    state.convSig = ''; // إعادة رسم القائمة لإظهار آخر رسالة محدثة
+    showScreen('list');
+    pollList();
+  }
+
+  function pollMessages() {
+    if (!state.chat) return;
+    api('GET', '/api/conversations/' + encodeURIComponent(state.chat.id) + '/messages?limit=30', null,
+      function (status, payload) {
+        if (status === 401 || status === 403) { handle401(status); return; }
+        if (status !== 200 || !payload || !payload.messages) return;
+        var incoming = payload.messages;
+        var changed = false, i, j, found;
+        for (i = 0; i < incoming.length; i++) {
+          found = false;
+          for (j = 0; j < state.messages.length; j++) {
+            if (state.messages[j].id === incoming[i].id) { found = true; break; }
+          }
+          if (!found) { state.messages.push(incoming[i]); changed = true; }
+        }
+        if (changed) {
+          state.messages.sort(function (a, b) {
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          });
+        }
+        if (state.screen === 'chat' && state.chat) {
+          if (changed) { renderMessages(); patchRead(false); }
+        }
+      });
+  }
+
+  function nearBottom(el) {
+    return el.scrollTop + el.clientHeight >= el.scrollHeight - 60;
+  }
+
+  function renderMessages() {
+    var box = $('msgs');
+    var stick = nearBottom(box);
+    var sig = '';
+    var i;
+    for (i = 0; i < state.messages.length; i++) {
+      sig += state.messages[i].id + '|';
+    }
+    if (sig === state.msgSig) return;
+    state.msgSig = sig;
+    box.innerHTML = '';
+    var meId = state.me ? state.me.id : null;
+    for (i = 0; i < state.messages.length; i++) {
+      var m = state.messages[i];
+      if (m.type === 'system') {
+        var sr = document.createElement('div');
+        sr.className = 'sys-row';
+        var pill = document.createElement('span');
+        pill.className = 'sys-pill';
+        pill.appendChild(document.createTextNode(m.text || ''));
+        sr.appendChild(pill);
+        box.appendChild(sr);
+        continue;
+      }
+      var row = document.createElement('div');
+      row.className = 'bub-row' + (m.senderId === meId ? ' mine' : '');
+      var bub = document.createElement('div');
+      bub.className = 'bub';
+      if (state.chat && state.chat.type === 'group' && m.senderId !== meId && m.sender && m.sender.name) {
+        var sn = document.createElement('span');
+        sn.className = 'sender';
+        sn.style.color = nameColor(m.sender.name);
+        sn.appendChild(document.createTextNode(m.sender.name));
+        bub.appendChild(sn);
+      }
+      var txt = m.type === 'voice' ? '\uD83C\uDFA4 رسالة صوتية' : String(m.text || '');
+      var tnode = document.createElement('span');
+      tnode.appendChild(document.createTextNode(txt));
+      bub.appendChild(tnode);
+      var mt = document.createElement('span');
+      mt.className = 'mtime';
+      mt.appendChild(document.createTextNode((m.senderId === meId ? '\u2713 ' : '') + fmtTime(m.createdAt)));
+      bub.appendChild(mt);
+      row.appendChild(bub);
+      box.appendChild(row);
+    }
+    if (stick) box.scrollTop = box.scrollHeight;
+  }
+
+  function nameColor(name) {
+    var palette = ['#e91e63', '#9c27b0', '#3f51b5', '#00897b', '#c62828', '#ef6c00', '#2e7d32', '#455a64'];
+    var h = 0, i;
+    for (i = 0; i < name.length; i++) { h = (h * 31 + name.charCodeAt(i)) >>> 0; }
+    return palette[h % palette.length];
+  }
+
+  function patchRead(force) {
+    if (!state.chat) return;
+    var now = Date.now();
+    if (!force && now - state.lastReadPatch < 5000) return;
+    state.lastReadPatch = now;
+    api('PATCH', '/api/conversations/' + encodeURIComponent(state.chat.id) + '/read', null,
+      function () {});
+  }
+
+  function sendMsg() {
+    if (state.sending || !state.chat) return;
+    var input = $('msg-input');
+    var text = String(input.value).replace(/^\s+|\s+$/g, '');
+    if (!text) return;
+    state.sending = true;
+    $('btn-send-msg').disabled = true;
+    show($('chat-err'), false);
+    api('POST', '/api/conversations/' + encodeURIComponent(state.chat.id) + '/messages',
+      { text: text.slice(0, 4000) },
+      function (status, payload) {
+        state.sending = false;
+        $('btn-send-msg').disabled = false;
+        if (status === 401) { handle401(status); return; }
+        if (status !== 200 || !payload || !payload.message) {
+          var el = $('chat-err');
+          setText(el, errText(status, payload));
+          show(el, true);
+          return;
+        }
+        input.value = '';
+        var found = false, j;
+        for (j = 0; j < state.messages.length; j++) {
+          if (state.messages[j].id === payload.message.id) { found = true; break; }
+        }
+        if (!found) {
+          state.messages.push(payload.message);
+          state.messages.sort(function (a, b) {
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          });
+          renderMessages();
+        }
+        try { input.focus(); } catch (e) {}
+      });
+  }
+
+  /* ------------------------------ الخروج ------------------------------ */
+  function logout() {
+    api('POST', '/api/auth/logout', null, function () {});
+    state.token = null;
+    state.me = null;
+    stopChat();
+    state.conversations = [];
+    state.convSig = '';
+    try { localStorage.removeItem('ic_token'); localStorage.removeItem('ic_me'); } catch (e) {}
+    document.title = 'محادثة فورية';
+    showScreen('login');
+  }
+
+  /* ------------------------------ المؤقّت ------------------------------ */
+  function tick() {
+    if (document.hidden) return;
+    if (state.screen === 'list' && Date.now() - state.lastListAt > 5500) pollList();
+    if (state.screen === 'chat') pollMessages();
+  }
+
+  /* ------------------------------ الإقلاع ------------------------------ */
+  function boot() {
+    $('btn-request').onclick = requestOtp;
+    $('btn-verify').onclick = verify;
+    $('btn-resend').onclick = requestOtp;
+    $('btn-back-phone').onclick = function () { showScreen('login'); };
+    $('btn-logout').onclick = logout;
+    $('btn-new-chat').onclick = openUsers;
+    $('btn-users-back').onclick = function () { showScreen('list'); pollList(); };
+    $('btn-chat-back').onclick = closeChat;
+    $('btn-send-msg').onclick = sendMsg;
+    $('msg-input').onkeydown = function (ev) {
+      ev = ev || window.event;
+      var k = ev.keyCode || ev.which;
+      if (k === 13) { if (ev.preventDefault) ev.preventDefault(); sendMsg(); }
+    };
+    $('code').onkeydown = function (ev) {
+      ev = ev || window.event;
+      var k = ev.keyCode || ev.which;
+      if (k === 13) { if (ev.preventDefault) ev.preventDefault(); verify(); }
+    };
+    $('phone').onkeydown = function (ev) {
+      ev = ev || window.event;
+      var k = ev.keyCode || ev.which;
+      if (k === 13) { if (ev.preventDefault) ev.preventDefault(); requestOtp(); }
+    };
+
+    var token = null;
+    try { token = localStorage.getItem('ic_token'); } catch (e) {}
+    if (token) {
+      state.token = token;
+      api('GET', '/api/auth/me', null, function (status, payload) {
+        if (status === 200 && payload && payload.user) {
+          state.me = payload.user;
+          try { localStorage.setItem('ic_me', JSON.stringify(payload.user)); } catch (e2) {}
+          enterMain();
+        } else {
+          try { localStorage.removeItem('ic_token'); localStorage.removeItem('ic_me'); } catch (e3) {}
+          state.token = null;
+          showScreen('login');
+        }
+      });
+    } else {
+      showScreen('login');
+    }
+    setInterval(tick, 2500);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, false);
+  } else {
+    boot();
+  }
+})();
+</script>
+</body>
+</html>

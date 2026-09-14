@@ -1,0 +1,3 @@
+module.exports=[14658,e=>{"use strict";async function r(){if(process.env.TELEGRAM_BOT_TOKEN)try{let{startBotPolling:r}=await e.A(68237);await r()}catch(e){console.error("[instrumentation] فشل بدء بوت تيليجرام:",e)}}e.s(["register",()=>r])},68237,e=>{e.v(r=>Promise.all(["server/chunks/[root-of-the-server]__f3b8bc85._.js"].map(r=>e.l(r))).then(()=>r(92356)))}];
+
+//# sourceMappingURL=_github-publish_instant-chat_src_b85aef24._.js.map
