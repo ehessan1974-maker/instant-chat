@@ -18,9 +18,11 @@
 ## المتطلبات
 
 1. هاتف **أندرويد** فيه شريحة SMS نشطة (بها باقة رسائل).
-2. تطبيقان من **F-Droid** (مهم: نسختان متطابقتان من نفس المصدر):
-   - [Termux](https://f-droid.org/packages/com.termux/)
-   - [Termux:API](https://f-droid.org/packages/com.termux.api/)
+2. تطبيقان من **F-Droid** (مهم: نسختان متطابقتان من نفس المصدر — لا تخلط مع Play Store أو GitHub):
+   - تطبيق F-Droid نفسه (إن لم يكن مثبتاً): <https://f-droid.org/F-Droid.apk>
+   - [Termux — صفحة التحميل](https://f-droid.org/packages/com.termux/) أو APK مباشر: <https://f-droid.org/repo/com.termux_1022.apk>
+   - [Termux:API — صفحة التحميل](https://f-droid.org/packages/com.termux.api/) أو APK مباشر: <https://f-droid.org/repo/com.termux.api_1002.apk>
+   - الترتيب مهم: ثبّت **Termux أولاً** ثم **Termux:API**.
 3. عنوان سيرفر Render: `https://instant-chat-f2ac.onrender.com`
 4. رمز سري `SMS_RELAY_TOKEN` (ولّدناه سابقاً — يُضبط على Render وعلى الهاتف فقط ولا يُكتب في أي مستودع).
 
