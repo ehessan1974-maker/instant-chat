@@ -206,6 +206,8 @@ export interface RequestOtpResult {
   linkUrl?: string;
   /** true = أُرسل الرمز مباشرة إلى شات تيليجرام المرتبط — بلا زر وبلا START */
   direct?: boolean;
+  /** رمز الربط المعلق (للاستطلاع والدخول التلقائي بضغطة «تأكيد الدخول») */
+  link?: string;
   error?: string;
 }
 
@@ -228,6 +230,25 @@ export function verifyOtp(phone: string, code: string, name?: string): Promise<V
   return apiFetch<VerifyResult>('/api/auth/verify', {
     method: 'POST',
     body: JSON.stringify(name ? { phone, code, name } : { phone, code }),
+  });
+}
+
+export interface OtpStatusResult {
+  status?: 'pending' | 'delivered' | 'approved' | 'expired' | string;
+}
+
+/** استطلاع حالة رمز تيليجرام المعلق (بلا أي أسرار في الاستجابة) */
+export function fetchOtpStatus(link: string): Promise<OtpStatusResult> {
+  return apiFetch<OtpStatusResult>(
+    `/api/auth/otp-status?link=${encodeURIComponent(link)}`
+  );
+}
+
+/** الدخول التلقائي بعد ضغط «تأكيد الدخول» في تيليجرام — بلا كتابة الرمز */
+export function verifyTelegram(link: string, name?: string): Promise<VerifyResult> {
+  return apiFetch<VerifyResult>('/api/auth/verify-telegram', {
+    method: 'POST',
+    body: JSON.stringify(name ? { link, name } : { link }),
   });
 }
 

@@ -37,6 +37,7 @@ model OtpCode {
   channel     String    @default("sms") // sms | telegram — قناة التسليم المقصودة
   linkCode    String?   @unique // رمز ربط deep-link لتسليم الرمز عبر بوت تيليجرام
   deliveredAt DateTime? // وقت التسليم الفعلي (بوت تيليجرام)
+  approvedAt  DateTime? // وقت ضغط «تأكيد الدخول» من تيليجرام — يفوّت الدخول التلقائي بلا كتابة الرمز
   expiresAt   DateTime
   used        Boolean   @default(false)
   createdAt   DateTime  @default(now())

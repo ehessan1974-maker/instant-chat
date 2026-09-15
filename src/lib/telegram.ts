@@ -74,6 +74,11 @@ interface TgUpdate {
     chat?: { id?: number }
     text?: string
   }
+  callback_query?: {
+    id?: number
+    data?: string
+    message?: { chat?: { id?: number } }
+  }
 }
 
 let cachedBotUsername: string | null = null
@@ -122,6 +127,27 @@ export async function sendTelegramMessage(
   return Boolean(result)
 }
 
+/**
+ * إرسال رمز الدخول مع زر «تأكيد الدخول» (inline callback) —
+ * الضغط عليه يُدخّل المستخدم تلقائياً في التطبيق بلا كتابة الرمز.
+ */
+export async function sendTelegramOtp(
+  chatId: number | string,
+  text: string,
+  linkCode: string
+): Promise<boolean> {
+  const result = await tgCall<{ message_id?: number }>('sendMessage', {
+    chat_id: chatId,
+    text,
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '✅ تأكيد الدخول', callback_data: `approve:${linkCode}` }],
+      ],
+    },
+  })
+  return Boolean(result)
+}
+
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -150,7 +176,7 @@ async function pollLoop(): Promise<void> {
   for (;;) {
     const updates = await tgCall<TgUpdate[]>(
       'getUpdates',
-      { offset, timeout: 25, allowed_updates: ['message'] },
+      { offset, timeout: 25, allowed_updates: ['message', 'callback_query'] },
       35_000
     )
     if (updates === null) {
@@ -172,6 +198,16 @@ async function pollLoop(): Promise<void> {
 }
 
 async function handleUpdate(update: TgUpdate): Promise<void> {
+  // ضغط زر «تأكيد الدخول» في تيليجرام → موافقة تُدخل المستخدم تلقائياً
+  const cb = update.callback_query
+  if (cb && typeof cb.data === 'string') {
+    const cbChatId = cb.message?.chat?.id
+    if (typeof cbChatId === 'number') {
+      await handleApproveCallback(cb.data, cb.id, cbChatId)
+    }
+    return
+  }
+
   const chatId = update.message?.chat?.id
   const text = (update.message?.text || '').trim()
   if (!chatId) return
@@ -197,6 +233,59 @@ async function handleUpdate(update: TgUpdate): Promise<void> {
   }
 
   await deliverOtpByLinkCode(param, chatId)
+}
+
+/** معالجة ضغط زر «تأكيد الدخول» — يعليم الموافقة في القاعدة ليدخل المتصفح تلقائياً */
+async function handleApproveCallback(
+  data: string,
+  callbackQueryId: number | undefined,
+  chatId: number
+): Promise<void> {
+  const answer = (text: string): void => {
+    if (typeof callbackQueryId !== 'number') return
+    void tgCall('answerCallbackQuery', { callback_query_id: callbackQueryId, text }, 8_000)
+  }
+
+  // الشاتات الجماعية لا تصلح — رسالة الرمز تُرى من غير صاحبها
+  if (chatId <= 0) {
+    answer('يُسمح بالتأكيد في محادثة خاصة فقط')
+    return
+  }
+
+  if (!data.startsWith('approve:')) {
+    answer('')
+    return
+  }
+  const linkCode = data.slice('approve:'.length).trim()
+  if (!/^[a-f0-9]{48}$/i.test(linkCode)) {
+    answer('رمز غير صالح')
+    return
+  }
+
+  try {
+    const otp = await db.otpCode.findUnique({ where: { linkCode } })
+    if (!otp || otp.used || otp.expiresAt.getTime() < Date.now()) {
+      answer('⌛ الطلب منتهي — اطلب رمزاً جديداً من التطبيق')
+      return
+    }
+
+    await db.otpCode.update({
+      where: { id: otp.id },
+      data: {
+        approvedAt: new Date(),
+        ...(otp.deliveredAt ? {} : { deliveredAt: new Date() }),
+      },
+    })
+    answer('✓ تم التأكيد — ارجع إلى التطبيق')
+    await sendTelegramMessage(
+      chatId,
+      '✅ تم تأكيد الدخول.\nارجع إلى التطبيق — سيُسجّل دخولك تلقائياً خلال ثوانٍ.'
+    )
+    console.log('[telegram] أُقرّ دخول (زر تأكيد) لرقم ينتهي بـ', otp.phone.slice(-4))
+  } catch (e) {
+    console.error('[telegram] معالجة التأكيد فشلت:', e instanceof Error ? e.message : e)
+    answer('⚠️ حدث خطأ — حاول مجدداً')
+  }
 }
 
 async function deliverOtpByLinkCode(linkCode: string, chatId: number): Promise<void> {
@@ -234,7 +323,8 @@ async function deliverOtpByLinkCode(linkCode: string, chatId: number): Promise<v
 
   const template = process.env.OTP_MESSAGE_TEMPLATE || 'رمز الدخول لمحادثة فورية: {code}'
   const text = template.replace('{code}', otp.code)
-  const sent = await sendTelegramMessage(chatId, text)
+  // زر التأكيد يُدخل المستخدم تلقائياً في التطبيق بلا كتابة الرمز
+  const sent = await sendTelegramOtp(chatId, text, linkCode)
   if (sent) {
     try {
       await db.otpCode.update({

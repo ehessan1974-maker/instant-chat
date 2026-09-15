@@ -8,6 +8,8 @@ import {
   ApiError,
   requestOtp,
   verifyOtp,
+  verifyTelegram,
+  fetchOtpStatus,
   setToken,
   storeMe,
   type Me,
@@ -15,6 +17,30 @@ import {
 
 interface LoginScreenProps {
   onAuthenticated: (me: Me) => void;
+}
+
+/** حفظ حالة طلب الرمز — حتى لا تضيع عند العودة من تيليجرام (إعادة تحميل الصفحة) */
+const OTP_FLOW_KEY = 'ic_otp_flow';
+const OTP_FLOW_TTL_MS = 10 * 60 * 1000; // نفس صلاحية الرمز
+
+interface SavedOtpFlow {
+  step: 'phone' | 'code';
+  phone: string;
+  devCode: string | null;
+  smsSent: boolean;
+  tgLink: string | null;
+  tgDirect: boolean;
+  usedChannel: 'telegram' | 'sms';
+  link: string | null;
+  savedAt: number;
+}
+
+function clearFlowStorage(): void {
+  try {
+    window.sessionStorage.removeItem(OTP_FLOW_KEY);
+  } catch {
+    /* تجاهل */
+  }
 }
 
 /** 4 خانات لإدخال رمز التحقق مع تنقّل تلقائي */
@@ -90,6 +116,8 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
   const [smsSent, setSmsSent] = useState(false);
   const [tgLink, setTgLink] = useState<string | null>(null);
   const [tgDirect, setTgDirect] = useState(false);
+  const [link, setLink] = useState<string | null>(null);
+  const [tgApproved, setTgApproved] = useState(false);
   const [usedChannel, setUsedChannel] = useState<'telegram' | 'sms'>('telegram');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +126,110 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
   useEffect(() => {
     if (needName) nameRef.current?.focus();
   }, [needName]);
+
+  // استرجاع حالة طلب الرمز عند العودة من تيليجرام (حتى لو أُعيد تحميل الصفحة)
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(OTP_FLOW_KEY);
+      if (!raw) return;
+      window.sessionStorage.removeItem(OTP_FLOW_KEY); // نستعيده مرة واحدة ثم يُعاد حفظه حياً
+      const saved = JSON.parse(raw) as SavedOtpFlow | null;
+      if (
+        !saved ||
+        saved.step !== 'code' ||
+        typeof saved.savedAt !== 'number' ||
+        Date.now() - saved.savedAt > OTP_FLOW_TTL_MS
+      ) {
+        return;
+      }
+      setPhone(saved.phone || '');
+      setDevCode(saved.devCode ?? null);
+      setSmsSent(Boolean(saved.smsSent));
+      setTgLink(saved.tgLink ?? null);
+      setTgDirect(Boolean(saved.tgDirect));
+      setUsedChannel(saved.usedChannel === 'sms' ? 'sms' : 'telegram');
+      setLink(saved.link ?? null);
+      setStep('code');
+    } catch {
+      /* تجاهل */
+    }
+  }, []);
+
+  // حفظ الحي للحالة ما دمنا في خطوة إدخال الرمز
+  useEffect(() => {
+    if (step !== 'code') return;
+    try {
+      const payload: SavedOtpFlow = {
+        step,
+        phone,
+        devCode,
+        smsSent,
+        tgLink,
+        tgDirect,
+        usedChannel,
+        link,
+        savedAt: Date.now(),
+      };
+      window.sessionStorage.setItem(OTP_FLOW_KEY, JSON.stringify(payload));
+    } catch {
+      /* تجاهل */
+    }
+  }, [step, phone, devCode, smsSent, tgLink, tgDirect, usedChannel, link]);
+
+  // استطلاع دوري: هل ضغط المستخدم «تأكيد الدخول» في تيليجرام؟
+  useEffect(() => {
+    if (step !== 'code' || !link || (!tgLink && !tgDirect) || devCode || tgApproved) return;
+    let stopped = false;
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const res = await fetchOtpStatus(link);
+          if (stopped) return;
+          if (res.status === 'approved') {
+            setTgApproved(true);
+          } else if (res.status === 'expired') {
+            stopped = true;
+            setError('انتهت صلاحية رمز التحقق — ارجع واطلب رمزاً جديداً');
+          }
+          // pending | delivered → نستمر بالاستطلاع
+        } catch {
+          /* خطأ شبكة مؤقت — نكمل الاستطلاع */
+        }
+      })();
+    }, 3000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [step, link, tgLink, tgDirect, devCode, tgApproved]);
+
+  // الدخول التلقائي بمجرد تأكيد المستخدم من تيليجرام — بلا كتابة أي رمز
+  useEffect(() => {
+    if (!tgApproved || !link || needName) return;
+    void (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await verifyTelegram(link);
+        clearFlowStorage();
+        setToken(res.token);
+        storeMe(res.user);
+        onAuthenticated(res.user);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 422) {
+          const rec = (e.payload ?? {}) as Record<string, unknown>;
+          if (rec.error === 'NAME_REQUIRED') {
+            setNeedName(true);
+            setLoading(false);
+            return;
+          }
+        }
+        setError(e instanceof ApiError ? e.message : 'تعذر إكمال تسجيل الدخول، حاول مجدداً');
+        setTgApproved(false);
+        setLoading(false);
+      }
+    })();
+  }, [tgApproved, link, needName]);
 
   function normalizePhone(v: string): string {
     return v.replace(/[^\d+]/g, '');
@@ -120,6 +252,8 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
       setUsedChannel(viaTelegram || directTelegram ? 'telegram' : 'sms');
       setDevCode(res.code ?? null);
       setTgDirect(directTelegram);
+      setLink(res.link ?? null);
+      setTgApproved(false);
       setSmsSent(res.delivered === true && !viaTelegram && !directTelegram);
       setTgLink(viaTelegram ? (res.linkUrl ?? null) : null);
       setStep('code');
@@ -131,6 +265,28 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
   }
 
   async function handleVerify() {
+    // مسار الدخول التلقائي: المستخدم أكد من تيليجرام — بلا كتابة رمز
+    if (tgApproved && link) {
+      if (needName && !name.trim()) {
+        setError('يرجى كتابة اسمك للمتابعة');
+        return;
+      }
+      setError(null);
+      setLoading(true);
+      try {
+        const res = await verifyTelegram(link, needName ? name.trim() : undefined);
+        clearFlowStorage();
+        setToken(res.token);
+        storeMe(res.user);
+        onAuthenticated(res.user);
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'تعذر إكمال تسجيل الدخول، حاول مجدداً');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (code.length < 4) {
       setError('أدخل رمز التحقق المكوّن من 4 أرقام');
       return;
@@ -231,8 +387,11 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                     setCode('');
                     setTgLink(null);
                     setTgDirect(false);
+                    setLink(null);
+                    setTgApproved(false);
                     setUsedChannel('telegram');
                     setError(null);
+                    clearFlowStorage();
                   }}
                   className="flex h-8 w-8 items-center justify-center rounded-full text-[#008069] hover:bg-black/5"
                   aria-label="تغيير الرقم والرجوع"
@@ -260,9 +419,10 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                     استلم الرمز عبر تيليجرام
                   </a>
                   <p className="text-xs leading-5 text-[#3b4a54]">
-                    اضغط الزر ثم <span className="font-bold">START</span> في تيليجرام — سيصلك الرمز
-                    خلال ثوانٍ، ثم أدخله هنا. <span className="font-bold">مرة واحدة فقط</span> — بعد
-                    ستصل الرموز القادمة فوراً بلا أي زر.
+                    اضغط الزر ثم <span className="font-bold">START</span> — ستصلك رسالة فيها الرمز
+                    وزر <span className="font-bold">«تأكيد الدخول»</span>: اضغطه ويتم تسجيل دخولك
+                    تلقائياً هنا بلا كتابة. <span className="font-bold">مرة واحدة فقط</span> — بعد
+                    تصل الرموز فوراً بلا أي زر.
                   </p>
                   {/* بديل لمن لا يملك حساب تيليجرام */}
                   <button
@@ -283,7 +443,8 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                     أرسلنا رمز الدخول إلى تيليجرام فوراً ✅
                   </p>
                   <p className="text-xs leading-5 text-[#3b4a54]">
-                    افتح تيليجرام وستجد رسالة البوت فيها الرمز — ثم أدخله هنا
+                    افتح تيليجرام واضغط <span className="font-bold">«تأكيد الدخول»</span> في رسالة
+                    البوت — سيتم تسجيل دخولك تلقائياً هنا بلا كتابة. أو أدخل الرمز يدوياً.
                   </p>
                 </div>
               ) : (
@@ -330,6 +491,11 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                   <label htmlFor="display-name" className="text-sm font-medium text-[#3b4a54]">
                     اسمك
                   </label>
+                  {tgApproved && (
+                    <p role="status" className="text-xs font-medium text-[#0a6f53]">
+                      تم تأكيد الدخول من تيليجرام ✓ — اكتب اسمك لإكمال أول تسجيل
+                    </p>
+                  )}
                   <Input
                     id="display-name"
                     ref={nameRef}

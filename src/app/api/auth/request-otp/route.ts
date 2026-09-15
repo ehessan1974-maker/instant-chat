@@ -8,7 +8,7 @@ import {
   getTelegramBotUsername,
   getTelegramChatId,
   newTelegramLinkCode,
-  sendTelegramMessage,
+  sendTelegramOtp,
 } from '@/lib/telegram'
 
 const OTP_TTL_MS = 10 * 60 * 1000 // صلاحية الرمز: 10 دقائق
@@ -141,9 +141,10 @@ export async function POST(req: Request) {
       if (boundChatId !== null) {
         const template =
           process.env.OTP_MESSAGE_TEMPLATE || 'رمز الدخول لمحادثة فورية: {code}'
-        const sent = await sendTelegramMessage(
+        const sent = await sendTelegramOtp(
           boundChatId,
-          template.replace('{code}', code)
+          template.replace('{code}', code),
+          linkCode
         )
         if (sent) {
           await db.otpCode.update({
@@ -155,6 +156,7 @@ export async function POST(req: Request) {
             delivered: true,
             channel: 'telegram',
             direct: true,
+            link: linkCode,
             isNew: !existing,
           })
         }
@@ -168,6 +170,7 @@ export async function POST(req: Request) {
         delivered: true,
         channel: 'telegram',
         linkUrl,
+        link: linkCode,
         isNew: !existing,
       })
     }
