@@ -14,6 +14,7 @@ import {
   storeMe,
   type Me,
 } from '@/lib/chat-api';
+import { APP_VERSION } from '@/lib/version';
 
 interface LoginScreenProps {
   onAuthenticated: (me: Me) => void;
@@ -530,6 +531,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
         <p className="mt-4 text-center text-xs text-white/70">
           بالمتابعة أنت توافق على محادثة الآخرين باحترام 🙂
         </p>
+        <p className="mt-1 text-center text-[10px] text-white/45">{APP_VERSION}</p>
       </div>
     </main>
   );

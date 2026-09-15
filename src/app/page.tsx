@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, LogOut, MessageCircle } from 'lucide-react';
 import type { Socket } from 'socket.io-client';
 import { ChatAvatar } from '@/components/chat/avatar';
+import { APP_VERSION } from '@/lib/version';
 import { CallOverlay } from '@/components/chat/call-overlay';
 import { ChatView } from '@/components/chat/chat-view';
 import { ConversationList } from '@/components/chat/conversation-list';
@@ -421,6 +422,9 @@ export default function HomePage() {
       <header className="flex h-14 shrink-0 items-center gap-2.5 bg-[#008069] px-3 text-white sm:px-4">
         <MessageCircle className="h-6 w-6 shrink-0" aria-hidden="true" />
         <h1 className="text-lg font-extrabold">محادثة فورية</h1>
+        <span className="mt-1 hidden shrink-0 text-[10px] text-white/55 sm:block" aria-hidden="true">
+          {APP_VERSION}
+        </span>
 
         <div className="ms-auto flex min-w-0 items-center gap-2.5">
           {me && (
