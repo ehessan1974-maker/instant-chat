@@ -89,6 +89,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
   const [devCode, setDevCode] = useState<string | null>(null);
   const [smsSent, setSmsSent] = useState(false);
   const [tgLink, setTgLink] = useState<string | null>(null);
+  const [tgDirect, setTgDirect] = useState(false);
   const [usedChannel, setUsedChannel] = useState<'telegram' | 'sms'>('telegram');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,9 +116,11 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
       const channel = channelHint ?? usedChannel;
       const res = await requestOtp(p, channel);
       const viaTelegram = res.channel === 'telegram' && Boolean(res.linkUrl);
-      setUsedChannel(viaTelegram ? 'telegram' : 'sms');
+      const directTelegram = res.channel === 'telegram' && !viaTelegram;
+      setUsedChannel(viaTelegram || directTelegram ? 'telegram' : 'sms');
       setDevCode(res.code ?? null);
-      setSmsSent(res.delivered === true && !viaTelegram);
+      setTgDirect(directTelegram);
+      setSmsSent(res.delivered === true && !viaTelegram && !directTelegram);
       setTgLink(viaTelegram ? (res.linkUrl ?? null) : null);
       setStep('code');
     } catch (e) {
@@ -227,6 +230,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                     setStep('phone');
                     setCode('');
                     setTgLink(null);
+                    setTgDirect(false);
                     setUsedChannel('telegram');
                     setError(null);
                   }}
@@ -257,7 +261,8 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                   </a>
                   <p className="text-xs leading-5 text-[#3b4a54]">
                     اضغط الزر ثم <span className="font-bold">START</span> في تيليجرام — سيصلك الرمز
-                    خلال ثوانٍ، ثم أدخله هنا
+                    خلال ثوانٍ، ثم أدخله هنا. <span className="font-bold">مرة واحدة فقط</span> — بعد
+                    ستصل الرموز القادمة فوراً بلا أي زر.
                   </p>
                   {/* بديل لمن لا يملك حساب تيليجرام */}
                   <button
@@ -268,6 +273,18 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                   >
                     لا تملك تيليجرام؟ استلم الرمز برسالة نصية SMS
                   </button>
+                </div>
+              ) : tgDirect ? (
+                <div
+                  role="status"
+                  className="flex flex-col gap-1 rounded-xl bg-[#e7f6f2] px-3 py-3 text-center"
+                >
+                  <p className="text-sm font-bold text-[#0a6f53]">
+                    أرسلنا رمز الدخول إلى تيليجرام فوراً ✅
+                  </p>
+                  <p className="text-xs leading-5 text-[#3b4a54]">
+                    افتح تيليجرام وستجد رسالة البوت فيها الرمز — ثم أدخله هنا
+                  </p>
                 </div>
               ) : (
                 <>

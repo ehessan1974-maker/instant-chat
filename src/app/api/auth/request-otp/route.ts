@@ -6,7 +6,9 @@ import { isSmsConfigured, getSmsProvider, sendSms } from '@/lib/sms'
 import {
   isTelegramConfigured,
   getTelegramBotUsername,
+  getTelegramChatId,
   newTelegramLinkCode,
+  sendTelegramMessage,
 } from '@/lib/telegram'
 
 const OTP_TTL_MS = 10 * 60 * 1000 // صلاحية الرمز: 10 دقائق
@@ -65,6 +67,12 @@ function recordSend(phone: string): void {
  * القناة الافتراضية: تيليجرام عند ضبط توكن البوت، وإلا SMS.
  * يمكن طلب 'sms' صراحةً لمن لا يملك تيليجرام (زر البديل في الواجهة).
  *
+ * تيليجرام:
+ *  - رقم مربوط سابقاً (TelegramBinding) → إرسال فوري مباشر للشات
+ *    بلا زر وبلا START — الاستجابة: { channel:'telegram', direct:true }.
+ *  - رقم غير مربوط → رابط ?start= لضغطة START الأولى (قاعدة المنصة: البوت
+ *    لا يستطيع مراسلة مستخدم لم يتحدث معه — بعدها يصبح الربط دائماً).
+ *
  * مع مزود SMS مضبوط (SMS_PROVIDER): يرسل رمزاً حقيقياً بالرسالة النصية
  * ولا يعيد الرمز في الاستجابة إطلاقاً.
  * بلا مزود: وضع تجريبي — يعيد الرمز ليظهر في الواجهة.
@@ -109,7 +117,7 @@ export async function POST(req: Request) {
     const viaTelegram = Boolean(botUsername)
     const linkCode = viaTelegram ? newTelegramLinkCode() : null
 
-    await db.otpCode.create({
+    const otp = await db.otpCode.create({
       data: {
         phone,
         code,
@@ -125,8 +133,35 @@ export async function POST(req: Request) {
       select: { id: true },
     })
 
-    // تسليم عبر بوت تيليجرام: رابط ضغطة واحدة — الرمز لا يُكشف في أي استجابة
+    // تسليم عبر بوت تيليجرام — الرمز لا يُكشف في أي استجابة
     if (viaTelegram && botUsername && linkCode) {
+      // ① مسار الإرسال المباشر: الرقم مربوط سابقاً بشات تيليجرام
+      //    → الرمز يصل فوراً بلا زر وبلا ضغط START
+      const boundChatId = await getTelegramChatId(phone)
+      if (boundChatId !== null) {
+        const template =
+          process.env.OTP_MESSAGE_TEMPLATE || 'رمز الدخول لمحادثة فورية: {code}'
+        const sent = await sendTelegramMessage(
+          boundChatId,
+          template.replace('{code}', code)
+        )
+        if (sent) {
+          await db.otpCode.update({
+            where: { id: otp.id },
+            data: { deliveredAt: new Date() },
+          })
+          return NextResponse.json({
+            ok: true,
+            delivered: true,
+            channel: 'telegram',
+            direct: true,
+            isNew: !existing,
+          })
+        }
+        // فشل الإرسال المباشر (الشات حجب البوت؟) → نُكمل مسار الرابط أدناه
+      }
+
+      // ② مسار الرابط: أول مرة فقط — ضغطة START ثم يصبح الربط دائماً
       const linkUrl = `https://t.me/${botUsername}?start=${linkCode}`
       return NextResponse.json({
         ok: true,

@@ -202,8 +202,10 @@ export interface RequestOtpResult {
   delivered?: boolean;
   /** قناة التسليم: sms | telegram */
   channel?: string;
-  /** عند التسليم عبر تيليجرام: رابط ضغطة واحدة لاستلام الرمز من البوت */
+  /** عند التسليم عبر تيليجرام: رابط ضغطة واحدة لاستلام الرمز من البوت (أول مرة فقط) */
   linkUrl?: string;
+  /** true = أُرسل الرمز مباشرة إلى شات تيليجرام المرتبط — بلا زر وبلا START */
+  direct?: boolean;
   error?: string;
 }
 

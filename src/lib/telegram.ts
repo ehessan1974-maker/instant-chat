@@ -38,6 +38,29 @@ export function newTelegramLinkCode(): string {
   return randomBytes(24).toString('hex')
 }
 
+/// جلب معرّف الشات المرتبط بالرقم (الربط الدائم بعد أول تسليم) — أو null
+export async function getTelegramChatId(phone: string): Promise<number | null> {
+  try {
+    const binding = await db.telegramBinding.findUnique({ where: { phone } })
+    return binding?.chatId ?? null
+  } catch {
+    return null
+  }
+}
+
+/// حفظ/تحديث الربط الدائم بين الرقم والشات (يُستدعى بعد كل تسليم ناجح عبر البوت)
+async function upsertTelegramBinding(phone: string, chatId: number): Promise<void> {
+  try {
+    await db.telegramBinding.upsert({
+      where: { phone },
+      update: { chatId },
+      create: { phone, chatId },
+    })
+  } catch (e) {
+    console.error('[telegram] حفظ الربط الدائم فشل:', e instanceof Error ? e.message : e)
+  }
+}
+
 interface TgResponse<T> {
   ok?: boolean
   result?: T
@@ -221,6 +244,8 @@ async function deliverOtpByLinkCode(linkCode: string, chatId: number): Promise<v
     } catch (e) {
       console.error('[telegram] تعليم التسليم فشل:', e instanceof Error ? e.message : e)
     }
+    // ربط دائم: الرموز القادمة لهذا الرقم تُرسل فوراً بلا زر وبلا START
+    await upsertTelegramBinding(otp.phone, chatId)
     console.log('[telegram] سُلّم رمز دخول لرقم ينتهي بـ', otp.phone.slice(-4))
   } else {
     await sendTelegramMessage(chatId, '⚠️ حدث خطأ مؤقت — أعد ضغط زر الاستلام من التطبيق.')

@@ -44,6 +44,15 @@ model OtpCode {
   @@index([phone])
 }
 
+/// ربط دائم بين رقم الهاتف وشات تيليجرام — يُحفظ بعد أول تسليم عبر البوت
+/// ليتسنى إرسال الرموز التالية مباشرة (بلا زر وبلا START)
+model TelegramBinding {
+  phone     String   @id // الرقم بصيغة E.164
+  chatId    Int // معرّف محادثة تيليجرام المرتبط بالرقم
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model SmsOutbox {
   id        String    @id @default(cuid())
   phone     String
