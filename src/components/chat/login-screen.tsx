@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Loader2, MessageCircle, Send } from 'lucide-react';
+import { ArrowRight, Loader2, MessageCircle, Send, Smartphone } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,9 +10,11 @@ import {
   verifyOtp,
   verifyTelegram,
   fetchOtpStatus,
+  fetchChannels,
   setToken,
   storeMe,
   type Me,
+  type OtpChannels,
 } from '@/lib/chat-api';
 import { APP_VERSION } from '@/lib/version';
 
@@ -122,7 +124,23 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
   const [usedChannel, setUsedChannel] = useState<'telegram' | 'sms'>('telegram');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [channels, setChannels] = useState<OtpChannels>({ telegram: false, sms: 'demo' });
   const nameRef = useRef<HTMLInputElement>(null);
+
+  // كشف القنوات المتاحة من الخادم — لعرض خيار SMS/تيليجرام الصحيح من البداية
+  useEffect(() => {
+    let alive = true;
+    void fetchChannels()
+      .then((c) => {
+        if (alive) setChannels(c);
+      })
+      .catch(() => {
+        /* افتراضي: demo — الخادم يقرر فعلياً عند الطلب */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (needName) nameRef.current?.focus();
@@ -377,6 +395,25 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
               >
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'إرسال رمز التحقق'}
               </Button>
+
+              {/* خيار SMS الظاهر من البداية لمن لا يملك تيليجرام */}
+              {channels.telegram && channels.sms && (
+                <button
+                  type="button"
+                  onClick={() => void handleSendCode('sms')}
+                  disabled={loading}
+                  className="mx-auto flex min-h-[44px] items-center gap-1.5 text-xs font-medium text-[#008069] underline-offset-4 hover:underline disabled:opacity-50"
+                >
+                  <Smartphone className="h-4 w-4" />
+                  أو استلم الرمز برسالة نصية SMS
+                </button>
+              )}
+              {!channels.telegram && channels.sms === 'demo' && (
+                <p className="text-center text-[11px] leading-4 text-[#8696a0]">
+                  وضع تجريبي: سيظهر رمز التحقق على الشاشة مباشرة — على الخادم الحقيقي يُرسل عبر
+                  تيليجرام أو SMS
+                </p>
+              )}
             </form>
           ) : (
             <div className="flex flex-col gap-4">
@@ -426,19 +463,22 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                     تصل الرموز فوراً بلا أي زر.
                   </p>
                   {/* بديل لمن لا يملك حساب تيليجرام */}
-                  <button
-                    type="button"
-                    onClick={() => void handleSendCode('sms')}
-                    disabled={loading}
-                    className="mt-1 text-xs font-medium text-[#008069] underline-offset-4 hover:underline disabled:opacity-50"
-                  >
-                    لا تملك تيليجرام؟ استلم الرمز برسالة نصية SMS
-                  </button>
+                  {channels.sms && (
+                    <button
+                      type="button"
+                      onClick={() => void handleSendCode('sms')}
+                      disabled={loading}
+                      className="mx-auto mt-1 flex min-h-[44px] items-center gap-1.5 text-xs font-medium text-[#008069] underline-offset-4 hover:underline disabled:opacity-50"
+                    >
+                      <Smartphone className="h-4 w-4" />
+                      لا تملك تيليجرام؟ استلم الرمز برسالة نصية SMS
+                    </button>
+                  )}
                 </div>
               ) : tgDirect ? (
                 <div
                   role="status"
-                  className="flex flex-col gap-1 rounded-xl bg-[#e7f6f2] px-3 py-3 text-center"
+                  className="flex flex-col gap-2.5 rounded-xl bg-[#e7f6f2] px-3 py-3 text-center"
                 >
                   <p className="text-sm font-bold text-[#0a6f53]">
                     أرسلنا رمز الدخول إلى تيليجرام فوراً ✅
@@ -447,6 +487,18 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                     افتح تيليجرام واضغط <span className="font-bold">«تأكيد الدخول»</span> في رسالة
                     البوت — سيتم تسجيل دخولك تلقائياً هنا بلا كتابة. أو أدخل الرمز يدوياً.
                   </p>
+                  {/* بديل: لم يصل شيء أو لا يملك تيليجرام — تبديل فوري لقناة SMS */}
+                  {channels.sms && (
+                    <button
+                      type="button"
+                      onClick={() => void handleSendCode('sms')}
+                      disabled={loading}
+                      className="mx-auto flex min-h-[44px] items-center gap-1.5 text-xs font-medium text-[#008069] underline-offset-4 hover:underline disabled:opacity-50"
+                    >
+                      <Smartphone className="h-4 w-4" />
+                      لم يصلك؟ استلم الرمز برسالة نصية SMS بدلاً منه
+                    </button>
+                  )}
                 </div>
               ) : (
                 <>
@@ -486,6 +538,19 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
               >
                 لم يصلك الرمز؟ إعادة الإرسال
               </button>
+
+              {/* العودة لقناة تيليجرام بعد التبديل إلى SMS — التبديل فوري بلا انتظار */}
+              {usedChannel === 'sms' && channels.telegram && (
+                <button
+                  type="button"
+                  onClick={() => void handleSendCode('telegram')}
+                  disabled={loading}
+                  className="mx-auto flex min-h-[44px] items-center gap-1.5 text-xs font-medium text-[#008069] underline-offset-4 hover:underline disabled:opacity-50"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  أو استلم الرمز عبر تيليجرام بدلاً من ذلك
+                </button>
+              )}
 
               {needName && (
                 <div className="flex flex-col gap-1.5">

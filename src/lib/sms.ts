@@ -167,3 +167,8 @@ export async function sendSms(to: string, text: string): Promise<SmsSendResult> 
       return { ok: false, error: 'provider_not_configured' }
   }
 }
+
+/** الوضع التجريبي (إظهار الرمز في الواجهة بدل إرساله) — خارج الإنتاج أو بتصريح صريح */
+export function demoOtpAllowed(): boolean {
+  return process.env.NODE_ENV !== 'production' || process.env.OTP_DEMO_MODE === '1'
+}

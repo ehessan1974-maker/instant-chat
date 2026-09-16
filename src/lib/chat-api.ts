@@ -177,6 +177,8 @@ function translateError(code: string, status: number): string {
       return 'تجاوزت عدد مرات إرسال الرموز المسموحة — حاول لاحقاً';
     case 'SMS_FAILED':
       return 'تعذر إرسال الرسالة النصية — تحقق من الرقم وحاول بعد قليل';
+    case 'SMS_NOT_CONFIGURED':
+      return 'خدمة الرسائل النصية غير مفعّلة على الخادم بعد — استخدم تيليجرام';
     case 'TOO_MANY_ATTEMPTS':
       return 'محاولات كثيرة خاطئة — انتظر 15 دقيقة ثم جرّب مجدداً';
     case 'PHONE_REQUIRED':
@@ -219,6 +221,17 @@ export function requestOtp(
     method: 'POST',
     body: JSON.stringify(channel ? { phone, channel } : { phone }),
   });
+}
+
+/** القنوات المتاحة لإرسال رمز الدخول — يكشفها الخادم ليعرض الزر الصحيح من البداية */
+export interface OtpChannels {
+  telegram: boolean;
+  /** 'relay'|'twilio'|'vonage'|'http' مزود حقيقي — 'demo' وضع تجريبي — null غير مفعّل */
+  sms: string | null;
+}
+
+export async function fetchChannels(): Promise<OtpChannels> {
+  return apiFetch<OtpChannels>('/api/auth/channels');
 }
 
 export interface VerifyResult {

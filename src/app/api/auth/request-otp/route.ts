@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { normalizePhone, readJsonRecord } from '@/lib/auth'
-import { isSmsConfigured, getSmsProvider, sendSms } from '@/lib/sms'
+import { isSmsConfigured, getSmsProvider, sendSms, demoOtpAllowed } from '@/lib/sms'
 import {
   isTelegramConfigured,
   getTelegramBotUsername,
@@ -90,10 +90,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'PHONE_INVALID' }, { status: 400 })
     }
 
-    // كولداون دقيقة لكل رقم (قاعدة بيانات — يبقى رغم إعادة التشغيل)
+    // اختيار القناة: تيليجرام عند ضبط البوت إلا إذا طلب المستخدم SMS صراحةً
+    // (مستخدم بلا حساب تيليجرام يضغط زر البديل في الواجهة)
+    const requestedSms = body?.channel === 'sms'
+    const requestedChannel = requestedSms ? 'sms' : 'telegram'
+
+    // كولداون دقيقة لكل رقم **على نفس القناة** — التبديل بين تيليجرام وSMS فوري
+    // بلا انتظار، وإعادة الإرسال على نفس القناة تنتظر دقيقة (قاعدة بيانات — تبقى رغم إعادة التشغيل)
     const recent = await db.otpCode.findFirst({
       where: {
         phone,
+        channel: requestedChannel,
         createdAt: { gt: new Date(Date.now() - RESEND_COOLDOWN_MS) },
       },
       select: { id: true },
@@ -109,9 +116,6 @@ export async function POST(req: Request) {
 
     const code = String(randomInt(0, 10000)).padStart(4, '0')
 
-    // اختيار القناة: تيليجرام عند ضبط البوت إلا إذا طلب المستخدم SMS صراحةً
-    // (مستخدم بلا حساب تيليجرام يضغط زر البديل في الواجهة)
-    const requestedSms = body?.channel === 'sms'
     const botUsername =
       !requestedSms && isTelegramConfigured() ? getTelegramBotUsername() : null
     const viaTelegram = Boolean(botUsername)
@@ -195,8 +199,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, delivered: true, isNew: !existing })
     }
 
-    // وضع تجريبي بلا مزود — نعيد الرمز للواجهة كما كان
-    return NextResponse.json({ ok: true, code, isNew: !existing, delivered: false })
+    // وضع تجريبي بلا مزود — نعيد الرمز للواجهة للتجربة (خارج الإنتاج فقط؛
+    // في الإنتاج بلا مزود نرفض بدل كشف رموز أرقام الغير)
+    if (demoOtpAllowed()) {
+      return NextResponse.json({ ok: true, code, isNew: !existing, delivered: false })
+    }
+    return NextResponse.json({ error: 'SMS_NOT_CONFIGURED' }, { status: 503 })
   } catch (error) {
     console.error('[auth/request-otp] failed:', error)
     return NextResponse.json({ error: 'INTERNAL' }, { status: 500 })
