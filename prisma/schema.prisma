@@ -54,6 +54,15 @@ model TelegramBinding {
   updatedAt DateTime @updatedAt
 }
 
+/// إعدادات الخادم المحفوظة (توكن بوت تيليجرام، مزود SMS، رمز البوابة…)
+/// تُضبط من معالج التهيئة داخل التطبيق نفسه — بلا متغيرات بيئة ولا إعادة نشر
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 model SmsOutbox {
   id        String    @id @default(cuid())
   phone     String

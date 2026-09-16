@@ -1,9 +1,18 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { SETTING_KEYS, loadSettings, getCachedSetting } from '@/lib/settings'
 
 const MAX_ATTEMPTS = 3 // بعد 3 سحبات بلا تأكيد تُسقط الرسالة (يمنع التكرار اللانهائي)
 const DEFAULT_LIMIT = 5
 const MAX_LIMIT = 20
+
+/** توكن البوابة: البيئة أولاً ثم إعدادات قاعدة البيانات (معالج التهيئة) */
+async function relayToken(): Promise<string> {
+  const fromEnv = (process.env.SMS_RELAY_TOKEN || '').trim()
+  if (fromEnv) return fromEnv
+  await loadSettings()
+  return (getCachedSetting(SETTING_KEYS.smsRelayToken) || '').trim()
+}
 
 /**
  * GET /api/sms/relay/pending?limit=5
@@ -12,7 +21,7 @@ const MAX_LIMIT = 20
  * كل سحبة ترفع عدّاد المحاولات — والرسائل المستنزفة تُسقط تلقائياً.
  */
 export async function GET(req: Request) {
-  const token = (process.env.SMS_RELAY_TOKEN || '').trim()
+  const token = await relayToken()
   if (!token) {
     return NextResponse.json({ error: 'RELAY_DISABLED' }, { status: 404 })
   }

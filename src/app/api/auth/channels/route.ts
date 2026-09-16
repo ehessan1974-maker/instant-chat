@@ -1,26 +1,26 @@
 import { NextResponse } from 'next/server'
-import { isTelegramConfigured } from '@/lib/telegram'
-import { demoOtpAllowed, getSmsProvider, isSmsConfigured } from '@/lib/sms'
+import { resolveTelegramToken } from '@/lib/telegram'
+import { demoOtpAllowed, isProviderConfigured, resolveSmsProvider } from '@/lib/sms'
 
 /**
- * GET /api/auth/channels
- * يكشف قنوات إرسال رمز الدخول المتاحة حتى تعرض الواجهة الخيار الصحيح
- * من أول لحظة بدل اكتشافها بعد المحاولة.
- *
- * telegram: true عند ضبط توكن بوت تيليجرام
- * sms:      'relay' | 'twilio' | 'vonage' | 'http' → مزود حقيقي مضبوط
- *           'demo' → وضع تجريبي (يظهر الرمز في الواجهة — خارج الإنتاج فقط)
- *           null   → الإنتاج بلا مزود SMS — نخفي الخيار بدل إظهاره معطلاً
+ * GET /api/auth/channels — يكشف قنوات تسليم رمز الدخول المتاحة فعلياً
+ * { telegram: boolean, sms: 'relay'|'twilio'|'vonage'|'http'|'demo'|null }
+ * null = إنتاج بلا مزود → نخفي الخيار بدل إظهاره معطلاً
+ * (تُقرأ التهيئة من متغيرات البيئة أو من إعدادات معالج التفعيل في قاعدة البيانات)
  */
 export async function GET() {
-  const provider = getSmsProvider()
+  const [telegramToken, provider] = await Promise.all([
+    resolveTelegramToken(),
+    resolveSmsProvider(),
+  ])
+
   let sms: string | null
-  if (isSmsConfigured() && provider) {
+  if (isProviderConfigured(provider)) {
     sms = provider
   } else if (demoOtpAllowed()) {
     sms = 'demo'
   } else {
     sms = null
   }
-  return NextResponse.json({ telegram: isTelegramConfigured(), sms })
+  return NextResponse.json({ telegram: Boolean(telegramToken), sms })
 }

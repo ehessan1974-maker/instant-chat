@@ -1,10 +1,19 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { SETTING_KEYS, loadSettings, getCachedSetting } from '@/lib/settings'
 
 interface ConfirmResult {
   id?: unknown
   ok?: unknown
   error?: unknown
+}
+
+/** توكن البوابة: البيئة أولاً ثم إعدادات قاعدة البيانات (معالج التهيئة) */
+async function relayToken(): Promise<string> {
+  const fromEnv = (process.env.SMS_RELAY_TOKEN || '').trim()
+  if (fromEnv) return fromEnv
+  await loadSettings()
+  return (getCachedSetting(SETTING_KEYS.smsRelayToken) || '').trim()
 }
 
 /**
@@ -14,7 +23,7 @@ interface ConfirmResult {
  * يثبّت هاتف البوابة نتيجة الإرسال لكل رسالة سحبها.
  */
 export async function POST(req: Request) {
-  const token = (process.env.SMS_RELAY_TOKEN || '').trim()
+  const token = await relayToken()
   if (!token) {
     return NextResponse.json({ error: 'RELAY_DISABLED' }, { status: 404 })
   }

@@ -19,18 +19,49 @@
 
 import { randomBytes } from 'node:crypto'
 import { db } from '@/lib/db'
+import { SETTING_KEYS, getCachedSetting, loadSettings } from '@/lib/settings'
 
 const API_BASE = 'https://api.telegram.org/bot'
 
-export function isTelegramConfigured(): boolean {
-  return Boolean((process.env.TELEGRAM_BOT_TOKEN || '').trim())
+let cachedBotUsername: string | null = null
+let polling = false
+
+/** توكن البوت الفعلي: متغير البيئة أولاً ثم إعدادات قاعدة البيانات (معالج التهيئة) */
+export function telegramTokenCached(): string {
+  const fromEnv = (process.env.TELEGRAM_BOT_TOKEN || '').trim()
+  if (fromEnv) return fromEnv
+  return (getCachedSetting(SETTING_KEYS.telegramBotToken) || '').trim()
 }
 
-/** يوزر البوت من البيئة أو من ذاكرة getMe — أو null إن لم يتوفر بعد */
+/** يضمن حداثة ذاكرة قاعدة البيانات ثم يعيد التوكن الفعلي */
+export async function resolveTelegramToken(): Promise<string> {
+  const fromEnv = (process.env.TELEGRAM_BOT_TOKEN || '').trim()
+  if (fromEnv) return fromEnv
+  await loadSettings()
+  return telegramTokenCached()
+}
+
+export function isTelegramConfigured(): boolean {
+  return Boolean(telegramTokenCached())
+}
+
+/** يوزر البوت: البيئة ← قاعدة البيانات (معالج التهيئة) ← ذاكرة getMe — أو null */
 export function getTelegramBotUsername(): string | null {
   const fromEnv = (process.env.TELEGRAM_BOT_USERNAME || '').trim().replace(/^@/, '')
   if (fromEnv) return fromEnv
+  const fromDb = getCachedSetting(SETTING_KEYS.telegramBotUsername)
+  if (fromDb) return fromDb
   return cachedBotUsername
+}
+
+/** تحديث اسم البوت المُخزّن فوراً بعد معالج التهيئة — بلا انتظار getMe جديد */
+export function setCachedBotUsername(username: string | null): void {
+  cachedBotUsername = username
+}
+
+/** هل حلقة بولينج البوت تعمل حالياً؟ */
+export function isBotPollingActive(): boolean {
+  return polling
 }
 
 /** رمز ربط عشوائي آمن لرابط تيليجرام */
@@ -81,15 +112,12 @@ interface TgUpdate {
   }
 }
 
-let cachedBotUsername: string | null = null
-let polling = false
-
 async function tgCall<T>(
   method: string,
   payload?: unknown,
   timeoutMs = 12_000
 ): Promise<T | null> {
-  const token = (process.env.TELEGRAM_BOT_TOKEN || '').trim()
+  const token = telegramTokenCached()
   if (!token) return null
   try {
     const res = await fetch(`${API_BASE}${token}/${method}`, {

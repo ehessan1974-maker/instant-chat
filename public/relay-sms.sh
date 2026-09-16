@@ -23,6 +23,12 @@ TOKEN="${SMS_RELAY_TOKEN:-ضع_رمز_SMS_RELAY_TOKEN_هنا}"   # نفس قيم
 POLL_SECONDS=5
 LIMIT=5
 
+if [ -z "${SMS_RELAY_TOKEN:-}" ] || [ "$TOKEN" = "ضع_رمز_SMS_RELAY_TOKEN_هنا" ]; then
+  echo "[relay] ⚠️ رمز البوابة مفقود — شغّله هكذا:"
+  echo "        SMS_RELAY_TOKEN='رمزك_من_صفحة_التفعيل' bash relay.sh"
+  exit 1
+fi
+
 echo "[relay] بوابة الرسائل تعمل — السحب كل ${POLL_SECONDS} ثانية من ${BASE}"
 
 while true; do

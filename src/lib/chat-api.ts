@@ -179,6 +179,17 @@ function translateError(code: string, status: number): string {
       return 'تعذر إرسال الرسالة النصية — تحقق من الرقم وحاول بعد قليل';
     case 'SMS_NOT_CONFIGURED':
       return 'خدمة الرسائل النصية غير مفعّلة على الخادم بعد — استخدم تيليجرام';
+    case 'TOKEN_REQUIRED':
+    case 'TOKEN_INVALID_FORMAT':
+      return 'أدخل توكن البوت كاملاً كما أعطاك إياه BotFather';
+    case 'BOT_INVALID':
+      return 'التوكن غير صحيح — انسخه كاملاً من BotFather وجرّب مجدداً';
+    case 'BOT_NOT_ALLOWED':
+      return 'هذا البوت غير مسموح له بتفعيل هذا الخادم — استخدم بوت المالك';
+    case 'TELEGRAM_UNREACHABLE':
+      return 'تعذر الوصول إلى تيليجرام — تحقق من الإنترنت وحاول مجدداً';
+    case 'SETUP_RATE_LIMITED':
+      return 'محاولات تفعيل كثيرة — انتظر قليلاً ثم حاول مجدداً';
     case 'TOO_MANY_ATTEMPTS':
       return 'محاولات كثيرة خاطئة — انتظر 15 دقيقة ثم جرّب مجدداً';
     case 'PHONE_REQUIRED':
@@ -232,6 +243,37 @@ export interface OtpChannels {
 
 export async function fetchChannels(): Promise<OtpChannels> {
   return apiFetch<OtpChannels>('/api/auth/channels');
+}
+
+/* ------------------------- تفعيل الخادم (للمالك) ------------------------- */
+
+/** حالة تهيئة الخادم — بلا أي أسرار */
+export interface SetupStatus {
+  configured: boolean;
+  telegram: boolean;
+  smsProvider: string | null;
+  relayEnabled: boolean;
+}
+
+/** نتيجة التفعيل الناجحة — فيها أمر Termux الجاهز للنسخ */
+export interface SetupResult {
+  ok: boolean;
+  botUsername: string;
+  relayEnabled: boolean;
+  relayToken: string;
+  command: string;
+}
+
+export async function fetchSetupStatus(): Promise<SetupStatus> {
+  return apiFetch<SetupStatus>('/api/setup');
+}
+
+/** تفعيل الدخول الحقيقي: توكن بوت صالح من صاحبه — يُحفظ في قاعدة البيانات */
+export function activateServer(botToken: string): Promise<SetupResult> {
+  return apiFetch<SetupResult>('/api/setup', {
+    method: 'POST',
+    body: JSON.stringify({ botToken }),
+  });
 }
 
 export interface VerifyResult {

@@ -21,22 +21,42 @@
 // تحسين اختياري للرسالة (يجب أن تبقى تحت 70 حرفاً لقطاع SMS واحد):
 //   OTP_MESSAGE_TEMPLATE = "رمز الدخول لمحادثة فورية: {code}"
 
+import { SETTING_KEYS, getCachedSetting, loadSettings } from '@/lib/settings'
+
 export type SmsSendResult = { ok: true } | { ok: false; error: string }
 
 const SEND_TIMEOUT_MS = 10_000
 
-function activeProvider(): string {
+/** المزود من متغير البيئة فقط */
+function envProvider(): string {
   return (process.env.SMS_PROVIDER || '').trim().toLowerCase()
 }
 
-/** اسم المزود الحالي (twilio | vonage | http | relay | فارغ) */
+/** اسم المزود الفعلي (twilio | vonage | http | relay | فارغ) — البيئة أولاً ثم قاعدة البيانات */
 export function getSmsProvider(): string {
-  return activeProvider()
+  const fromEnv = envProvider()
+  if (fromEnv) return fromEnv
+  return (getCachedSetting(SETTING_KEYS.smsProvider) || '').trim().toLowerCase()
 }
 
-/** هل المزود مضبوط بمتغيرات البيئة؟ يحدد الوضع التجريبي مقابل الإرسال الحقيقي */
-export function isSmsConfigured(): boolean {
-  switch (activeProvider()) {
+/** نفس getSmsProvider مع ضمان حداثة ذاكرة قاعدة البيانات */
+export async function resolveSmsProvider(): Promise<string> {
+  const fromEnv = envProvider()
+  if (fromEnv) return fromEnv
+  await loadSettings()
+  return getSmsProvider()
+}
+
+/** توكن بوابة الموبايل (relay): البيئة أولاً ثم قاعدة البيانات — قراءة متزامنة */
+export function smsRelayTokenCached(): string {
+  const fromEnv = (process.env.SMS_RELAY_TOKEN || '').trim()
+  if (fromEnv) return fromEnv
+  return (getCachedSetting(SETTING_KEYS.smsRelayToken) || '').trim()
+}
+
+/** هل المزود المحدد مضبوط كاملاً؟ يحدد الوضع الحقيقي مقابل التجريبي */
+export function isProviderConfigured(provider: string): boolean {
+  switch (provider) {
     case 'twilio':
       return Boolean(
         process.env.TWILIO_ACCOUNT_SID &&
@@ -52,10 +72,20 @@ export function isSmsConfigured(): boolean {
     case 'http':
       return Boolean(process.env.SMS_HTTP_URL)
     case 'relay':
-      return Boolean(process.env.SMS_RELAY_TOKEN)
+      return Boolean(smsRelayTokenCached())
     default:
       return false
   }
+}
+
+/** توافق قديم: المزود الحالي مضبوط؟ (متزامن — يعتمد على ذاكرة الإقلاع/الطلب) */
+export function isSmsConfigured(): boolean {
+  return isProviderConfigured(getSmsProvider())
+}
+
+/** الفحص الدقيق غير المتزامن — يستخدمه مسار طلب الرمز ومسار القنوات */
+export async function resolveSmsConfigured(): Promise<boolean> {
+  return isProviderConfigured(await resolveSmsProvider())
 }
 
 async function postJson(

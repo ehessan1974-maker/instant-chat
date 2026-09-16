@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Loader2, MessageCircle, Send, Smartphone } from 'lucide-react';
+import { ArrowRight, ChevronDown, Copy, Loader2, MessageCircle, Send, ShieldCheck, Smartphone } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,10 +11,12 @@ import {
   verifyTelegram,
   fetchOtpStatus,
   fetchChannels,
+  activateServer,
   setToken,
   storeMe,
   type Me,
   type OtpChannels,
+  type SetupResult,
 } from '@/lib/chat-api';
 import { APP_VERSION } from '@/lib/version';
 
@@ -125,6 +127,12 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [channels, setChannels] = useState<OtpChannels>({ telegram: false, sms: 'demo' });
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupToken, setSetupToken] = useState('');
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [setupDone, setSetupDone] = useState<SetupResult | null>(null);
+  const [copied, setCopied] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
 
   // كشف القنوات المتاحة من الخادم — لعرض خيار SMS/تيليجرام الصحيح من البداية
@@ -254,6 +262,44 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
     return v.replace(/[^\d+]/g, '');
   }
 
+  /** تفعيل الدخول الحقيقي (للمالك): توكن بوت صالح يُحفظ في قاعدة بيانات الخادم */
+  async function handleActivate() {
+    const tokenValue = setupToken.trim();
+    if (!tokenValue) {
+      setSetupError('الصق توكن البوت أولاً');
+      return;
+    }
+    setSetupError(null);
+    setSetupBusy(true);
+    try {
+      const res = await activateServer(tokenValue);
+      setSetupDone(res);
+      setSetupToken('');
+      // تحديث القنوات فوراً — تيليجرام وSMS يصبحان متاحين بلا إعادة تحميل
+      try {
+        const fresh = await fetchChannels();
+        setChannels(fresh);
+      } catch {
+        /* نترك الحالة الحالية */
+      }
+    } catch (e) {
+      setSetupError(e instanceof ApiError ? e.message : 'تعذر التفعيل، حاول مجدداً');
+    } finally {
+      setSetupBusy(false);
+    }
+  }
+
+  async function copySetupCommand() {
+    if (!setupDone) return;
+    try {
+      await navigator.clipboard.writeText(setupDone.command);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* المتصفح رفض النسخ — يبقى التحديد اليدوي */
+    }
+  }
+
   async function handleSendCode(channelHint?: 'telegram' | 'sms') {
     const p = normalizePhone(phone);
     if (p.replace(/\D/g, '').length < 8) {
@@ -364,6 +410,93 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
                   أدخل رقم هاتفك وسنرسل لك رمز تحقق من 4 أرقام
                 </p>
               </div>
+
+              {/* بطاقة تفعيل الخادم — تظهر فقط حين يكون الخادم الحقيقي بلا أي قناة
+                  (الإنتاج غير المهيأ: sms=null). في الوضع التجريبي المحلي تُخفى
+                  حتى لا يُفعّل الساندبوكس بالخطأ — هناك يظهر تلميح الوضع التجريبي */}
+              {((!channels.telegram && channels.sms === null) || setupDone) && (
+                <div className="rounded-xl border border-amber-300/80 bg-amber-50/80 px-3 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setSetupOpen((v) => !v)}
+                    aria-expanded={setupOpen}
+                    className="flex w-full items-center justify-between gap-2"
+                  >
+                    <span className="flex items-center gap-1.5 text-sm font-bold text-amber-800">
+                      <ShieldCheck className="h-4 w-4" />
+                      تفعيل الدخول الحقيقي (للمالك)
+                    </span>
+                    <ChevronDown
+                      className={`h-4 w-4 text-amber-700 transition-transform ${setupOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+
+                  {setupOpen &&
+                    (setupDone ? (
+                      <div className="mt-2.5 flex flex-col gap-2">
+                        <p className="text-sm font-bold text-[#0a6f53]">
+                          ✅ تم التفعيل — الدخول الآن حقيقي عبر تيليجرام (@{setupDone.botUsername})
+                        </p>
+                        <p className="text-xs leading-5 text-[#3b4a54]">
+                          لتفعيل رموز SMS من شريحة موبايلك (بلا أي تكلفة)، ثبّت تطبيقَي{' '}
+                          <span className="font-bold">Termux</span> و{' '}
+                          <span className="font-bold">Termux:API</span> من F-Droid ثم شغّل هذا الأمر
+                          فيه:
+                        </p>
+                        <code
+                          dir="ltr"
+                          className="block max-h-28 overflow-y-auto break-all rounded-lg bg-[#111b21] p-2 text-left text-[10px] leading-4 text-[#d9fdd3]"
+                        >
+                          {setupDone.command}
+                        </code>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void copySetupCommand()}
+                          className="h-9 rounded-xl border-amber-300 text-xs font-bold text-amber-800"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          {copied ? 'تم النسخ ✓' : 'نسخ الأمر'}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="mt-2.5 flex flex-col gap-2">
+                        <p className="text-xs leading-5 text-[#7a5c1e]">
+                          الصق توكن بوت تيليجرام من @BotFather — يُحفظ على الخادم ويصبح تسليم الرمز
+                          حقيقياً فوراً، بلا إعادة نشر.
+                        </p>
+                        <Input
+                          dir="ltr"
+                          type="password"
+                          inputMode="text"
+                          autoComplete="off"
+                          value={setupToken}
+                          onChange={(e) => setSetupToken(e.target.value)}
+                          placeholder="123456789:AAF…"
+                          disabled={setupBusy}
+                          className="h-10 rounded-xl border-amber-300 bg-white text-left text-sm"
+                        />
+                        {setupError && (
+                          <p role="alert" className="text-xs font-medium text-red-600">
+                            {setupError}
+                          </p>
+                        )}
+                        <Button
+                          type="button"
+                          onClick={() => void handleActivate()}
+                          disabled={setupBusy}
+                          className="h-10 rounded-xl bg-amber-600 text-sm font-bold text-white hover:bg-amber-700 disabled:opacity-60"
+                        >
+                          {setupBusy ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            'تفعيل الخادم'
+                          )}
+                        </Button>
+                      </div>
+                    ))}
+                </div>
+              )}
 
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="phone" className="text-sm font-medium text-[#3b4a54]">

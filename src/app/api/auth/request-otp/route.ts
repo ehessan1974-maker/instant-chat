@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { normalizePhone, readJsonRecord } from '@/lib/auth'
-import { isSmsConfigured, getSmsProvider, sendSms, demoOtpAllowed } from '@/lib/sms'
+import { isProviderConfigured, resolveSmsProvider, sendSms, demoOtpAllowed } from '@/lib/sms'
 import {
   isTelegramConfigured,
   getTelegramBotUsername,
@@ -180,12 +180,13 @@ export async function POST(req: Request) {
     }
 
     // الإرسال الحقيقي: رسالة نصية للرقم بلا أي كشف للرمز في الاستجابة
-    if (isSmsConfigured()) {
+    const provider = await resolveSmsProvider()
+    if (isProviderConfigured(provider)) {
       const template = process.env.OTP_MESSAGE_TEMPLATE || 'رمز الدخول لمحادثة فورية: {code}'
       const text = template.replace('{code}', code).slice(0, 160)
 
       // بوابة الموبايل (relay): تُكتب بطابور ينتظر سحبها وإرسالها من هاتف صاحب التطبيق
-      if (getSmsProvider() === 'relay') {
+      if (provider === 'relay') {
         await db.smsOutbox.create({ data: { phone, text } })
         return NextResponse.json({ ok: true, delivered: true, isNew: !existing })
       }
