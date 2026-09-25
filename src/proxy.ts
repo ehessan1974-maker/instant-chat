@@ -16,6 +16,10 @@ import { NextRequest, NextResponse } from 'next/server'
  *
  * ملاحظات:
  *   - صفحات API والملفات الثابتة تمرّ دائماً بلا توجيه.
+ *   - صفحة التحميل download.html وملف InstantChat.apk مستثنيان عمداً:
+ *     أصحاب الأجهزة القديمة هم أشد المحتاجين لتحميل الـAPK، فلو حُوِّل
+ *     طلبهم إلى legacy.html لتعذّر عليهم الوصول إلى صفحة التحميل نفسها
+ *     وإلى تنزيل الملف من المتصفح.
  *   - يمكن فرض الواجهة الحديثة بـ?__modern=1 (يحفظ كوكيزاً للجلسة).
  */
 export default function proxy(req: NextRequest) {
@@ -72,6 +76,6 @@ function isLegacyUserAgent(ua: string): boolean {
 export const config = {
   // كل المسارات عدا: API، أصول Next، الملفات الثابتة، والنسخة الخفيفة نفسها
   matcher: [
-    '/((?!api|_next|legacy\\.html|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest|\\.well-known|relay-sms\\.sh|icon-\\d+|apple-icon|opengraph).*)',
+    '/((?!api|_next|legacy\\.html|download\\.html|InstantChat\\.apk|qr-download\\.png|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest|\\.well-known|relay-sms\\.sh|icon-\\d+|apple-icon|opengraph).*)',
   ],
 }

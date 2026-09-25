@@ -586,3 +586,22 @@ Stage Summary:
 - APK v4.0: هاتف حديث يفتح التطبيق الكامل تلقائياً (مجموعات/محادثات خاصة/صوتيات/مكالمات)، هاتف قديم يفتح النسخة الخفيفة تلقائياً — نفس الملف يعمل على الجميع بلا أزرار ولا إعدادات أولية.
 - ⚠️ مفتاح توقيع جديد = أول تثبيت يتطلب إلغاء تثبيت النسخة القديمة (مرة واحدة). المفتاح في .apk-signing/ — نسخة احتياطية إلزامية (اقرأ .apk-signing/README.md).
 - التغيير المستقبلي للخادم الافتراضي: عدّل DEFAULT_SERVER في .apk-signing/index.html → python3 build.py → verify.py → انسخ إلى android/.
+
+---
+Task ID: download-page-1
+Agent: Z.ai Code (main)
+Task: «اعمل لي صفحة تحميل للبرنامج — زر لتحميل apk وزر لتحميل ويب» (بعد رفع d479607 بتوكين من المالك)
+
+Work Log:
+- اكتشاف معماري حاسم: Render يشغّل حزمة prebuilt/next المبنية مسبقاً (Dockerfile ينسخها — الخطة المجانية لا تتحمل بناء Next.js)؛ فما لا يصل إلى prebuilt لا يصل للمستخدم.
+- اكتشاف خطير ذو صلة: مطابقة proxy المُجمّعة تحوّل حتى طلب /InstantChat.apk من متصفح قديم إلى legacy.html — تحميل الـAPK من الويب كان سيكون مستحيلاً على الأجهزة القديمة (أشد المحتاجين له).
+- بنيت صفحة /download.html ثابتة كلاسيكية (بلا JS، CSS بلا @layer/oklch/flex-gap — نفس قيود legacy.html): ترويسة خضراء بشعار SVG + زر APK (بسمة download + سطر الإصدار والحجم) + زر النسخة ويب (href نسبي «/» فيفتح الكامل للحديث وlegacy للقديم تلقائياً) + QR (scripts/gen_qr.py، يشير للـAPK مباشرة) + 3 خطوات تثبيت + تنبيه حذف الإصدار القديم + صندوق معلومات + تذييل.
+- نسخت الثلاثية (download.html + InstantChat.apk من android/ + qr-download.png) إلى public/ وprebuilt/next/public/ معاً.
+- ترقيع جراحي للمطابقة بدل إعادة بناء الحزمة كاملة (أكثر أماناً للموقع الحي): إضافة download\.html|InstantChat\.apk|qr-download\.png لقائمة الاستثناءات في src/proxy.ts + 3 ملفات مُجمّعة (chunk root-of-the-server + _clientMiddlewareManifest.json + functions-config-manifest.json) عبر scripts/patch_matcher.py؛ المصدر محدّث فأي إعادة بناء مستقبلية تُنتج الشيء نفسه.
+- اختبار تشغيلي كامل (تشغيل prebuilt محلياً + curl بـUA حقيقيين): قديم Chrome43 (مثل J5) → download.html 200 + APK 200 (3472355 بايت، application/vnd.android.package-archive) + QR 200؛ وتحويل «/»→legacy.html للقديم ما زال يعمل (لا رجوع عن السلوك الأصلي)؛ حديث Chrome120 → «/» وdownload.html بـ200. (درس أثناء الاختبار: خادم خلفي يتيم على المنفذ جعل اختبار QR يُظهر 307 زوراً — القتل النظيف وإعادة التشغيل صحّح النتيجة).
+- فحص بصري agent-browser (390x844): الصفحة سليمة RTL كاملة + إصلاح كسر أسطر رابط GitHub في التذييل (word-break).
+
+Stage Summary:
+- صفحة التحميل الرسمية: https://instant-chat-f2ac.onrender.com/download.html — تعمل على أي جهاز/متصفح حتى أقدمها، وتصلح للمشاركة عبر واتساب أو QR مطبوع.
+- قاعدة مستقبلية: أي ملف ثابت جديد للعامة يجب أن يوضع في public/ وprebuilt/next/public/ معاً، وأي مسار عام جديد يستثنى من مطابقة proxy في المصدر + الترقيع المُجمّع.
+- d479607 (APK v4.0) رُفع سابقاً إلى origin/main بتوكين كلاسيكي وفّره المالك (انسحب الأول — fine-grained بلا صلاحية Contents: write ثم سُحب).

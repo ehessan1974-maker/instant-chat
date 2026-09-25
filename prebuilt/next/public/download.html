@@ -1,0 +1,187 @@
+<!doctype html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#008069">
+<meta name="description" content="تحميل تطبيق محادثة فورية لأندرويد (APK) — أو استخدم النسخة ويب مباشرة من أي متصفح ودون تثبيت.">
+<title>تحميل محادثة فورية</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2300a884'%3E%3Cpath d='M12 2C6.48 2 2 6.02 2 11c0 2.87 1.49 5.43 3.82 7.1V22l3.6-1.98c.82.17 1.68.26 2.58.26 5.52 0 10-4.02 10-9S17.52 2 12 2z'/%3E%3C/svg%3E">
+<style>
+/* ============================================================
+   صفحة التحميل — CSS كلاسيكي 100% (بلا @layer ولا oklch ولا
+   color-mix ولا gap في flex) — تعمل على أقدم المتصفحات وWebView
+   المجمد تماماً كالنسخة الخفيفة legacy.html
+   ============================================================ */
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: Tahoma, 'Segoe UI', Arial, sans-serif;
+  background: #e5ddd5;
+  color: #111b21;
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+}
+* { box-sizing: border-box; }
+
+.wrap { max-width: 480px; margin: 0 auto; min-height: 100vh; }
+
+/* ------------------------------ الترويسة ------------------------------ */
+header.hero {
+  background: #075e54;
+  background: -webkit-linear-gradient(top, #075e54, #008069);
+  background: linear-gradient(top, #075e54, #008069);
+  padding: 34px 16px 30px;
+  text-align: center;
+}
+.logo-circle {
+  width: 84px; height: 84px; line-height: 84px; margin: 0 auto 12px;
+  border-radius: 50%; background: rgba(255,255,255,.16);
+  text-align: center;
+}
+.logo-circle svg { vertical-align: middle; }
+.hero h1 { color: #fff; font-size: 26px; margin: 0 0 6px; }
+.hero .sub { color: rgba(255,255,255,.85); font-size: 13px; margin: 0 0 14px; line-height: 1.7; }
+.badge {
+  display: inline-block; background: rgba(255,255,255,.18); color: #fff;
+  border: 1px solid rgba(255,255,255,.35); border-radius: 20px;
+  font-size: 12px; font-weight: bold; padding: 4px 14px;
+}
+
+/* ------------------------------ البطاقة ------------------------------ */
+.card {
+  background: #fff; border-radius: 14px; margin: -18px 12px 14px;
+  padding: 20px 16px 18px; text-align: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  -webkit-box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  position: relative;
+}
+
+/* ------------------------------ الأزرار ------------------------------ */
+a.btn {
+  display: block; text-decoration: none; border-radius: 12px;
+  padding: 13px 12px; margin: 0 0 12px; text-align: right;
+}
+a.btn .ico {
+  display: inline-block; vertical-align: middle; width: 46px; height: 46px;
+  line-height: 46px; border-radius: 50%; text-align: center; margin-left: 12px;
+}
+a.btn .ico svg { vertical-align: middle; }
+a.btn .txt { display: inline-block; vertical-align: middle; }
+a.btn .txt b { display: block; font-size: 16px; }
+a.btn .txt small { display: block; font-size: 12px; margin-top: 3px; }
+
+a.btn-primary { background: #00a884; color: #fff;
+  box-shadow: 0 3px 8px rgba(0,168,132,.35); -webkit-box-shadow: 0 3px 8px rgba(0,168,132,.35); }
+a.btn-primary .ico { background: rgba(255,255,255,.18); }
+a.btn-primary .txt small { color: rgba(255,255,255,.85); }
+a.btn-primary:active { background: #01916f; }
+
+a.btn-secondary { background: #fff; color: #008069; border: 2px solid #00a884; }
+a.btn-secondary .ico { background: #e7f6f2; }
+a.btn-secondary .txt small { color: #667781; }
+a.btn-secondary:active { background: #f0faf7; }
+
+/* ------------------------------ رمز QR ------------------------------ */
+.qr-box { border-top: 1px solid #e9edef; padding-top: 16px; margin-top: 6px; }
+.qr-box img {
+  width: 170px; height: 170px; border: 1px solid #e9edef; border-radius: 10px;
+  padding: 6px; background: #fff;
+}
+.qr-box p { color: #667781; font-size: 13px; margin: 8px 0 0; line-height: 1.7; }
+
+/* ------------------------------ خطوات التثبيت ------------------------------ */
+h2.sec {
+  font-size: 16px; color: #111b21; text-align: right; margin: 22px 0 10px;
+  padding-right: 2px;
+}
+ol.steps { list-style: none; margin: 0; padding: 0; text-align: right; }
+ol.steps li {
+  position: relative; padding: 0 40px 14px 0; color: #3b4a54;
+  font-size: 13.5px; line-height: 1.8; min-height: 30px;
+}
+ol.steps li b { color: #111b21; }
+ol.steps li .num {
+  position: absolute; right: 0; top: 0; width: 26px; height: 26px; line-height: 26px;
+  border-radius: 50%; background: #00a884; color: #fff; font-weight: bold;
+  font-size: 14px; text-align: center;
+}
+
+/* ------------------------------ ملاحظات ------------------------------ */
+.note {
+  background: #fcf4cb; border: 1px solid #f0e3a8; border-radius: 10px;
+  padding: 10px 12px; margin: 8px 0 0; text-align: right;
+  color: #6b5b1e; font-size: 12.5px; line-height: 1.8;
+}
+.note b { color: #5a4c12; }
+.info {
+  background: #e7f6f2; border-radius: 10px; padding: 10px 12px; margin: 10px 0 0;
+  text-align: right; color: #0a6f53; font-size: 12.5px; line-height: 1.8;
+}
+
+/* ------------------------------ التذييل ------------------------------ */
+footer { text-align: center; padding: 4px 16px 26px; color: #667781; font-size: 12px; line-height: 2; }
+footer a { color: #008069; text-decoration: none; font-weight: bold; }
+footer .src { display: block; margin-top: 6px; }
+footer .src a { color: #667781; font-weight: normal; text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="logo-circle">
+      <svg width="46" height="46" viewBox="0 0 24 24" fill="#ffffff" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.02 2 11c0 2.87 1.49 5.43 3.82 7.1V22l3.6-1.98c.82.17 1.68.26 2.58.26 5.52 0 10-4.02 10-9S17.52 2 12 2z"/></svg>
+    </div>
+    <h1>محادثة فورية</h1>
+    <p class="sub">تطبيق الدردشة العربي بأسلوب واتساب — سريع وخفيف<br>ويعمل على أي جهاز، قديمه وحديثه</p>
+    <span class="badge">الإصدار 4.0</span>
+  </header>
+
+  <main class="card">
+
+    <a class="btn btn-primary" href="/InstantChat.apk" download>
+      <span class="ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="#ffffff" xmlns="http://www.w3.org/2000/svg"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></span>
+      <span class="txt">
+        <b>تحميل تطبيق أندرويد (APK)</b>
+        <small>الإصدار 4.0 &bull; 3.5 ميجابايت &bull; مجاني بالكامل</small>
+      </span>
+    </a>
+
+    <a class="btn btn-secondary" href="/">
+      <span class="ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="#008069" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM11 19.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></span>
+      <span class="txt">
+        <b>فتح النسخة ويب الآن</b>
+        <small>دون تثبيت &mdash; تعمل في أي متصفح وعلى أي جهاز</small>
+      </span>
+    </a>
+
+    <div class="qr-box">
+      <img src="/qr-download.png" width="170" height="170" alt="رمز QR — مسحه للتحميل المباشر">
+      <p>امسح الرمز بكاميرا الهاتف ليبدأ تحميل التطبيق مباشرة</p>
+    </div>
+
+    <h2 class="sec">كيف أثبّت التطبيق؟</h2>
+    <ol class="steps">
+      <li><span class="num">1</span><b>حمّل الملف</b> — اضغط الزر الأخضر أعلاه وانتظر اكتمال التنزيل.</li>
+      <li><span class="num">2</span><b>اسمح بالتثبيت</b> — قد يظهر تنبيه «الملف قد يكون ضارًا»؛ اختر «الاحتفاظ» ثم «فتح»، وعند الطلب فعّل «السماح بالتثبيت من هذا المصدر».</li>
+      <li><span class="num">3</span><b>افتح وسجّل دخولك</b> — الدخول يُحفظ تلقائيًا بعد أول مرة، وعلى الأجهزة القديمة (أندرويد 4.4 &ndash; 8) تُفتح النسخة الخفيفة تلقائيًا.</li>
+    </ol>
+
+    <div class="note">
+      <b>لديك إصدار قديم من التطبيق؟</b> احذفه أولًا ثم ثبّت هذا الإصدار — تم تحديث بصمة التوقيع الأمنية، والحذف مطلوب مرة واحدة فقط ثم لن يُطلب مجددًا.
+    </div>
+
+    <div class="info">
+      التطبيق يتصل بخادمك المضمّن تلقائيًا، وتُحفظ رسائلك على جهازك وخادمك — بلا وسطاء ولا إعلانات.
+    </div>
+
+  </main>
+
+  <footer>
+    تفضّل المتصفح؟ <a href="/">افتح المحادثة مباشرة الآن</a>
+    <span class="src">الكود المصدري: <a href="https://github.com/ehessan1974-maker/instant-chat" rel="noopener">github.com/ehessan1974-maker/instant-chat</a></span>
+  </footer>
+
+</div>
+</body>
+</html>

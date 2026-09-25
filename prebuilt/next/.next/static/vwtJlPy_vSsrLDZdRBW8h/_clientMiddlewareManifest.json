@@ -1,6 +1,6 @@
 [
   {
-    "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?(?:\\/((?!api|_next|legacy\\.html|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest|\\.well-known|relay-sms\\.sh|icon-\\d+|apple-icon|opengraph).*))(\\.json)?[\\/#\\?]?$",
-    "originalSource": "/((?!api|_next|legacy\\.html|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest|\\.well-known|relay-sms\\.sh|icon-\\d+|apple-icon|opengraph).*)"
+    "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?(?:\\/((?!api|_next|legacy\\.html|download\\.html|InstantChat\\.apk|qr-download\\.png|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest|\\.well-known|relay-sms\\.sh|icon-\\d+|apple-icon|opengraph).*))(\\.json)?[\\/#\\?]?$",
+    "originalSource": "/((?!api|_next|legacy\\.html|download\\.html|InstantChat\\.apk|qr-download\\.png|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest|\\.well-known|relay-sms\\.sh|icon-\\d+|apple-icon|opengraph).*)"
   }
 ]
