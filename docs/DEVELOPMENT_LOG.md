@@ -559,3 +559,30 @@ Stage Summary:
 - عند العودة: اقرأ docs/PROJECT_STATE.md أولاً ثم آخر مهمتين من DEVELOPMENT_LOG.md.
 - الإصدار الحالي v2.4 — التعديل الظاهر القادم يرفعها v2.5.
 - ملفات التشغيل في الساندبوكس فقط: .gh-token و.tg-token و .apk-signing/ (مفتاح APK) — لا تُرفع أمنياً؛ فوّتها = إعادة توليد (BotFather / GitHub PAT).
+
+---
+Task ID: apk-v4-1
+Agent: Z.ai Code (main)
+Task: «أريد العمل على تطبيق InstantChat.apk» — ترقية واجهة الإطلاق إلى فتح التطبيق الكامل بفحص ذكي لقدرات الجهاز (v4.0)
+
+Work Log:
+- استنساخ الريبو (main = a51dd3a) وتفكيك APK الحالي: Cordova shell (com.chatapp.instant) بواجهة إطلاق ES5 تفتح legacy.html فقط — رأي المالك: يريد التطبيق الكامل على الأجهزة القادرة مع بقاء التوافق مع القديمة أولاً (سؤال توضيحي: الهدف=التطبيق الكامل، الأجهزة=القديمة أولاً، الخادم=تضمين تلقائي، التوقيع=مفتاح جديد، النطاق=APK+خادم، الميزة=دخول محفوظ).
+- تأكيد أن «دخول محفوظ» موجود أصلاً في النسختين (ic_token/ic_me في localStorage — chat-api.ts وlegacy.html) فلا حاجة لتغيير الخادم لأجله.
+- بنيت مفتاح توقيع جديد (المفتاح القديم فُقد مع بيئة التطوير السابقة): RSA-2048، notBefore=2024-01-01 → notAfter=2076-09-12، في .apk-signing/ خارج الريبو + README نسخ احتياطي إلزامي للمالك.
+- واجهة إطلاق جديدة v4.0 (assets/www/index.html، ES5 خالص):
+  * خادم مضمّن تلقائياً (DEFAULT_SERVER=Render) — الافتتاح يبدأ ذاتياً بعد 1.4 ثانية، زر «إلغاء» يوقفه.
+  * فحص قدرات ذكي (كل الفحوصات new Function بصياغة ES5): async functions + optional chaining/nullish + Promise.allSettled → WebView حديث (Chromium 80+ = يكفي Next.js 16) يفتح «/» (التطبيق الكامل)، WebView قديم يفتح legacy.html. النتيجة تُخزَّن (ic_apk_cap) فلا يُعاد الفحص.
+  * وضع الفتح محفوظ (ic_apk_mode: auto/full/legacy) مع شاشة إعدادات كاملة: راديو الوضع + حقل الخادم + «حفظ الإعدادات فقط» + روابط سريعة (كامل/خفيفة/متصفح).
+  * الوصول للإعدادات: زر «إلغاء» أثناء الافتتاح أو ضغطة طويلة 3 ثوان على الشعار.
+  * مهلة أمان 9 ثوان: إن فشلت الملاحة (شبكة مقطوعة) تعود شاشة الإعدادات تلقائياً.
+- build.py (إعادة كتابة، نفس نهج apk-j5-fix-1): استبدال الواجهة فقط وحفظ باقي 486 مدخلاً بأسمائها وطرق ضغطها الأصلية، تعبئة يدوية بـ struct مع محاذاة 4 بايت لكل STORED عبر extra field 0xD935، توقيع v1 يدوي: MANIFEST.MF ببصمتين لكل مدخل (SHA1 لأقدم المحللات + SHA-256)، CERT.SF ببصمات MANIFEST كاملاً + كل قسم، CERT.RSA = PKCS7 detached عبر openssl smime -md sha256.
+- verify.py (تحقق مستقل 12 فحصاً): بنية ZIP، محاذاة خام بايت-ببايت (261 STORED)، شمول MANIFEST، صحة كل البصمات، تطابق CERT.SF، openssl smime -verify = Verification successful، بصمة الشهادة داخل التوقيع = المتوقعة، الواجهة المضمنة = المصدر، لا أسرار، مطابقة قائمة ومحتوى المدخلات مع الأصل بايت-ببايت — كلها ✓.
+- keytool -printcert -jarfile = VALID (SHA256withRSA، الشهادة حتى 2076) — تحقق Java الرسمي.
+- اختبار متصفح فعلي (agent-browser، شاشة 390x844): متصفح حديث → افتتاح تلقائي → انتقل فعلياً إلى https://instant-chat-f2ac.onrender.com/ (التطبيق الكامل) ✓؛ محاكاة جهاز قديم (ic_apk_cap=0) → انتقل إلى /legacy.html?from=apk ✓؛ زر «إلغاء» → شاشة الإعدادات ظهرت ✓؛ تبديل الوضع إلى full → محفوظ (ic_apk_mode=full) → reload بلا افتتاح تلقائي والراديو محفوظ ✓. لقطات في apk-build/.
+- assetlinks.json: حدّثت public/.well-known وprebuilt/next/public/.well-known — أضفت قيد com.chatapp.instant بالبصمة الجديدة (30:AF:...:B9:8F) وأبقيت قيد TWA القديم كما هو.
+- نشر: android/InstantChat.apk (3.47MB) + نسخة تحميل download/InstantChat-v4.0.apk.
+
+Stage Summary:
+- APK v4.0: هاتف حديث يفتح التطبيق الكامل تلقائياً (مجموعات/محادثات خاصة/صوتيات/مكالمات)، هاتف قديم يفتح النسخة الخفيفة تلقائياً — نفس الملف يعمل على الجميع بلا أزرار ولا إعدادات أولية.
+- ⚠️ مفتاح توقيع جديد = أول تثبيت يتطلب إلغاء تثبيت النسخة القديمة (مرة واحدة). المفتاح في .apk-signing/ — نسخة احتياطية إلزامية (اقرأ .apk-signing/README.md).
+- التغيير المستقبلي للخادم الافتراضي: عدّل DEFAULT_SERVER في .apk-signing/index.html → python3 build.py → verify.py → انسخ إلى android/.
