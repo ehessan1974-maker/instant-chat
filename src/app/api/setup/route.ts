@@ -24,7 +24,7 @@ import { isProviderConfigured, resolveSmsProvider } from '@/lib/sms'
 const TG_API = 'https://api.telegram.org/bot'
 
 // بوتات يُسمح لها بتفعيل الخادم — يوسَّع بمتغير SETUP_EXTRA_BOTS="bot1,bot2"
-const ALLOWED_BOTS = (process.env.SETUP_EXTRA_BOTS || 'instant_chat_otp_bot')
+const ALLOWED_BOTS = (process.env.SETUP_EXTRA_BOTS || 'instantchat_log_in_bot')
   .split(',')
   .map((u) => u.trim().replace(/^@/, '').toLowerCase())
   .filter(Boolean)

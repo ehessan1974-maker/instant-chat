@@ -10,7 +10,7 @@
 
 تطبيق **دردشة فوري** (Instant Chat) — Next.js 16 (App Router) + TypeScript + Socket.IO مدمج في خادم Next مخصص (`server.ts`) + Prisma/SQLite + Tailwind/shadcn/ui.
 
-- **تسجيل الدخول برمز OTP ثنائي القناة**: تيليغرام (البوت `@instant_chat_otp_bot`) أو رسالة SMS حقيقية عبر بوابة relay على هاتف أندرويد للمالك (أو Twilio/Vonage/HTTP إن أُضيفت لاحقاً).
+- **تسجيل الدخول برمز OTP ثنائي القناة**: تيليغرام (البوت `@instantchat_log_in_bot`) أو رسالة SMS حقيقية عبر بوابة relay على هاتف أندرويد للمالك (أو Twilio/Vonage/HTTP إن أُضيفت لاحقاً).
 - **واجهات متعددة**: تطبيق ويب كامل (PWA قابل للتثبيت) + نسخة خفيفة `public/legacy.html` لأقدم المتصفحات (REST فقط بلا WebSocket) + تطبيق أندرويد `android/InstantChat.apk` (Cordova بواجهة إطلاق ES5 تفتح النسخة الخفيفة).
 
 ## 2) الروابط المهمة
@@ -23,7 +23,7 @@
 | النسخة الخفيفة | https://instant-chat-f2ac.onrender.com/legacy.html |
 | صفحة التحميل (APK + ويب + QR) | https://instant-chat-f2ac.onrender.com/download.html |
 | الريبو الخاص (مفاتيح + أدوات + ذاكرة) | https://github.com/ehessan1974-maker/instant-chat-private (private) |
-| بوت تيليغرام | @instant_chat_otp_bot |
+| بوت تيليغرام | @instantchat_log_in_bot |
 | ملف APK | `android/InstantChat.apk` داخل الريبو |
 | شرح بوابة SMS relay | [`docs/sms-relay-setup.md`](./sms-relay-setup.md) |
 
@@ -102,4 +102,4 @@
 3. عدّل الكود → **ارفع الإصدار في `src/lib/version.ts`** → تحقق متصفحاً → commit بنسخة المزامنة → push إلى main.
 4. وثّق المهمة في سجل التطوير وأعد نسخه إلى هذا الريبو (كما فعلت هذه الجلسة) ثم ارفع مرة أخيرة.
 
-> **ملاحظة أمنية:** توكن بوت تيليغرام يُفعّل من داخل التطبيق (البطاقة) أو من متغيرات بيئة Render (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_BOT_USERNAME=instant_chat_otp_bot` + اختيارياً `SMS_PROVIDER=relay`) — ولا يُكتب في أي ملف داخل الريبو.
+> **ملاحظة أمنية:** توكن بوت تيليغرام يُفعّل من داخل التطبيق (البطاقة) أو من متغيرات بيئة Render (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_BOT_USERNAME=instantchat_log_in_bot` + اختيارياً `SMS_PROVIDER=relay`) — ولا يُكتب في أي ملف داخل الريبو.

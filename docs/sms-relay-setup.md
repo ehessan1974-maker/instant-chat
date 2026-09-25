@@ -50,7 +50,7 @@
 | المتغير | القيمة | الغرض |
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | توكن البوت `8886093644:AAG...` | قناة تيليجرام الافتراضية |
-| `TELEGRAM_BOT_USERNAME` | `instant_chat_otp_bot` | اسم المستخدم لبناء رابط الاستلام |
+| `TELEGRAM_BOT_USERNAME` | `instantchat_log_in_bot` | اسم المستخدم لبناء رابط الاستلام |
 | `SMS_PROVIDER` | `relay` | تفعيل بوابة الموبايل لمسار SMS |
 | `SMS_RELAY_TOKEN` | *(الرمز السري)* | مصادقة الهاتف عند السحب والإثبات |
 
